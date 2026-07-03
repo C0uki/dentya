@@ -2,8 +2,12 @@
   "name": "dentya",
   "version": "1.0.0",
   "description": "デン鉄 -DENTYA- 日本一周すごろく - Japanese train board game",
-  "main": "index.html",
+  "type": "module",
   "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "test": "echo \"No test specified\""
   },
   "keywords": [
@@ -16,5 +20,9 @@
   "license": "MIT",
   "dependencies": {
     "@vercel/speed-insights": "^1.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11"
   }
 }
