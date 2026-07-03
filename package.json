@@ -1,0 +1,20 @@
+{
+  "name": "dentya",
+  "version": "1.0.0",
+  "description": "デン鉄 -DENTYA- 日本一周すごろく - Japanese train board game",
+  "main": "index.html",
+  "scripts": {
+    "test": "echo \"No test specified\""
+  },
+  "keywords": [
+    "game",
+    "board-game",
+    "japan",
+    "sugoroku"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@vercel/speed-insights": "^1.1.0"
+  }
+}
