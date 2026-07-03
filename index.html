@@ -295,7 +295,7 @@ const CITIES=[
 ["鳥取",134.24,35.50,[["砂丘ラクダ屋",400,40],["二十世紀梨園",600,40],["妖怪ロード商店",700,35]]],
 ["松江",133.05,35.47,[["しじみ漁船",500,45],["和菓子の老舗",800,35]]],
 ["出雲",132.75,35.37,[["縁結び神社の茶屋",900,35],["出雲そば店",400,50]]],
-["萩",131.40,34.41,[["萩焼窯元",1000,35],["城下町ツアー",700,30]]],
+["萩",131.42,34.34,[["萩焼窯元",1000,35],["城下町ツアー",700,30]]],
 ["山口",131.47,34.19,[["瓦そば店",400,50],["セメント工場",8000,10]]],
 ["下関",130.94,33.96,[["ふぐ市場",2000,45],["海峡水族館",4000,18]]],
 ["広島",132.46,34.40,[["お好み焼き店",500,80],["牡蠣養殖場",1200,45],["造船所",30000,6]]],
@@ -309,7 +309,7 @@ const CITIES=[
 ["高知",133.53,33.56,[["カツオのたたき店",500,70],["よさこい会館",1200,20],["日曜市場",800,35]]],
 ["松山",132.77,33.84,[["道後の温泉旅館",5000,20],["みかんジュース工場",1000,40],["俳句記念館",600,20]]],
 ["今治",133.00,34.07,[["タオル工場",2500,30],["焼き鳥店",400,55]]],
-["宇和島",132.56,33.22,[["真珠養殖場",2000,35],["鯛めしの店",500,50]]],
+["宇和島",132.62,33.28,[["真珠養殖場",2000,35],["鯛めしの店",500,50]]],
 ["小倉",130.87,33.88,[["製鉄所",30000,7],["焼うどん店",300,60]]],
 ["福岡",130.40,33.59,[["屋台ラーメン",400,100],["明太子工場",2000,40],["ドーム球場",20000,8]]],
 ["唐津",129.97,33.45,[["唐津焼窯元",900,35],["イカの活造り店",800,50]]],
@@ -323,8 +323,8 @@ const CITIES=[
 ["延岡",131.66,32.58,[["チキン南蛮食堂",400,60],["釣り船ツアー",600,35]]],
 ["宮崎",131.42,31.91,[["マンゴー農園",1000,50],["地鶏の炭火焼店",600,55],["サーフリゾート",2000,25]]],
 ["鹿児島",130.56,31.60,[["黒豚しゃぶの店",900,50],["焼酎蔵",2000,35],["桜島観光フェリー",3000,15]]],
-["指宿",130.65,31.25,[["砂むし温泉",1200,35],["オクラ農園",400,40]]],
-["那覇",127.68,26.21,[["ソーキそば店",400,70],["泡盛酒造",1500,35],["国際通りの店",2000,35]]],
+["指宿",130.55,31.30,[["砂むし温泉",1200,35],["オクラ農園",400,40]]],
+["那覇",127.80,26.26,[["ソーキそば店",400,70],["泡盛酒造",1500,35],["国際通りの店",2000,35]]],
 ["名護",127.98,26.59,[["パイナップル園",700,45],["美ら海リゾートホテル",25000,12]]],
 ];
 const EDGES=[ // [都市A, 都市B, 中間マス数, 海路?]
@@ -394,7 +394,7 @@ const HAND_MAX=6;
 /* ================= graph ================= */
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}}
 const G={nodes:[],adj:[],cityIdx:{}};
-const PRJX=lon=>(lon-126.8)*62, PRJY=lat=>(46.0-lat)*74;
+const PRJX=lon=>(lon-126.8)*76, PRJY=lat=>(46.0-lat)*90;
 (function buildGraph(){
   const rng=mulberry32(20260703);
   CITIES.forEach((c,i)=>{
@@ -402,13 +402,39 @@ const PRJX=lon=>(lon-126.8)*62, PRJY=lat=>(46.0-lat)*74;
     G.nodes.push({type:"city",name:c[0],x:PRJX(c[1]),y:PRJY(c[2]),ci:i,pw:c[0].length*10.5+14});
     G.adj.push([]);
   });
-  // 過密地帯(関東・関西など)は駅名標が重ならないよう少しだけ押し広げる
-  for(let it=0;it<60;it++){
+  // 過密地帯(関東・関西など)は駅名標が重ならないよう少しだけ押し広げる。
+  // ただし元の位置から離れすぎないよう上限をかけ、海の上に出た駅は陸へ引き戻す。
+  const anchors=G.nodes.slice(0,CITIES.length).map(n=>({x:n.x,y:n.y}));
+  for(let it=0;it<50;it++){
     for(let a=0;a<CITIES.length;a++)for(let b=a+1;b<CITIES.length;b++){
       const A=G.nodes[a],B=G.nodes[b];
-      const dx=B.x-A.x,dy=B.y-A.y,d=Math.hypot(dx,dy),min=56;
+      const dx=B.x-A.x,dy=B.y-A.y,d=Math.hypot(dx,dy),min=46;
       if(d<min&&d>0.01){const push=(min-d)/2/d;A.x-=dx*push;A.y-=dy*push;B.x+=dx*push;B.y+=dy*push;}
     }
+    for(let a=0;a<CITIES.length;a++){
+      const A=G.nodes[a],an=anchors[a];
+      const dx=A.x-an.x,dy=A.y-an.y,d=Math.hypot(dx,dy),cap=26;
+      if(d>cap){A.x=an.x+dx/d*cap;A.y=an.y+dy/d*cap;}
+    }
+  }
+  const polys=COAST.map(isl=>isl.map(p=>[PRJX(p[0]),PRJY(p[1])]));
+  const inland=(x,y)=>polys.some(poly=>{
+    let inside=false;
+    for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+      const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
+      if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)inside=!inside;
+    }
+    return inside;
+  });
+  for(let a=0;a<CITIES.length;a++){
+    const n=G.nodes[a],an=anchors[a];
+    if(inland(n.x,n.y)||!inland(an.x,an.y))continue;
+    let fixed=false;
+    for(let t=0.15;t<1&&!fixed;t+=0.15){
+      const x=n.x+(an.x-n.x)*t,y=n.y+(an.y-n.y)*t;
+      if(inland(x,y)){n.x=x;n.y=y;fixed=true;}
+    }
+    if(!fixed){n.x=an.x;n.y=an.y;}
   }
   const link=(a,b)=>{G.adj[a].push(b);G.adj[b].push(a);};
   G.edgeLines=[];
@@ -569,13 +595,13 @@ function drawTokens(){
 }
 
 /* camera:自分のいるところを中心に大きく表示 */
-const cam={x:650,y:650,w:1300}, camT={...cam};
-let fullView=false, FOLLOW_W=340;
+const cam={x:760,y:900,w:1600}, camT={...cam};
+let fullView=false, FOLLOW_W=400;
 function camTo(x,y,w){
   if(fullView){
     const wrap=document.getElementById("mapwrap");
     const asp=wrap.clientHeight/Math.max(1,wrap.clientWidth);
-    camT.x=620; camT.y=740; camT.w=Math.max(1260,1520/asp);
+    camT.x=760; camT.y=910; camT.w=Math.max(1560,1880/asp);
   } else {camT.x=x;camT.y=y;camT.w=w||FOLLOW_W;}
 }
 (function camLoop(){
@@ -678,8 +704,8 @@ $("viewbtn").onclick=e=>{fullView=!fullView;e.currentTarget.setAttribute("aria-p
   if(fullView)camTo(0,0);else{const p=S.players[S.turn];if(p)focusPlayer(p);}};
 $("mutebtn").onclick=e=>{muted=!muted;e.currentTarget.setAttribute("aria-pressed",muted);e.currentTarget.textContent=muted?"音 OFF":"音 ON";};
 function refocus(){ if(fullView)return; const p=S.players[S.turn]; if(p)focusPlayer(p); }
-$("zoominbtn").onclick=()=>{FOLLOW_W=Math.max(180,FOLLOW_W-60);fullView=false;$("viewbtn").setAttribute("aria-pressed","false");refocus();};
-$("zoomoutbtn").onclick=()=>{FOLLOW_W=Math.min(720,FOLLOW_W+60);fullView=false;$("viewbtn").setAttribute("aria-pressed","false");refocus();};
+$("zoominbtn").onclick=()=>{FOLLOW_W=Math.max(220,FOLLOW_W-80);fullView=false;$("viewbtn").setAttribute("aria-pressed","false");refocus();};
+$("zoomoutbtn").onclick=()=>{FOLLOW_W=Math.min(900,FOLLOW_W+80);fullView=false;$("viewbtn").setAttribute("aria-pressed","false");refocus();};
 
 async function showAssets(p){
   let rows="",totalInc=0;
