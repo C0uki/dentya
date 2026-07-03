@@ -66,10 +66,18 @@ export function ownerTag(o: number): string {
 }
 
 export function updateHUD(): void {
-  $("huddate").textContent = `${yearOf()}年目 ${monthOf()}月`;
+  $("tbyear").textContent = `${yearOf()}年目`;
+  $("tbmonth").textContent = `${monthOf()}月`;
   const p = S.players[S.turn];
+  if (p) {
+    $("tbchip").style.background = p.color;
+    $("tbname").textContent = `${p.name}のばん`;
+    const cash = $("tbcash");
+    cash.textContent = `持ち金 ${fmtMoney(p.cash)}`;
+    cash.classList.toggle("minus", p.cash < 0);
+  }
   const d = p ? bfsDist(p.pos, S.dest) : 0;
-  $("huddest").innerHTML = S.dest < 0 ? "" :
+  $("tbdest").innerHTML = S.dest < 0 ? "" :
     `<span class="to">▼${cityName(S.dest)}</span> まで ${d} マス<small>とうちゃく援助金 ${fmtMoney(currentPrize())}</small>`;
 }
 
@@ -95,9 +103,6 @@ export function updateRanking(): void {
 export function updateDock(): void {
   const p = S.players[S.turn];
   if (!p) return;
-  $("whoname").innerHTML = `<span class="chipdot" style="background:${p.color}"></span>${p.name}のばん`;
-  $("whocash").textContent = `持ち金 ${fmtMoney(p.cash)}`;
-  $("whocash").className = p.cash < 0 ? "minus" : "";
   const hand = $("hand");
   hand.innerHTML = "";
   const hp = S.players.find((q) => q.human);

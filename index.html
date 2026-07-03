@@ -13,25 +13,26 @@
 <div id="app">
   <div id="mapwrap">
     <svg id="map" preserveAspectRatio="xMidYMid meet" aria-label="日本地図すごろくマップ"></svg>
-    <div id="hud">
-      <div class="hudcard" id="huddate">1年目 4月</div>
-      <div class="hudcard" id="huddest"></div>
-      <div id="hudbtns">
-        <button class="hudbtn" id="helpbtn" aria-label="あそびかた">?</button>
-        <button class="hudbtn" id="zoominbtn" aria-label="ズームイン">+</button>
-        <button class="hudbtn" id="zoomoutbtn" aria-label="ズームアウト">−</button>
-        <button class="hudbtn" id="viewbtn" aria-pressed="false">全体図</button>
-        <button class="hudbtn" id="mutebtn" aria-pressed="false">音 ON</button>
+    <div id="topbar">
+      <div id="tbplayer">
+        <span class="chipdot" id="tbchip"></span>
+        <span id="tbname">あなたのばん</span>
+        <span id="tbcash">持ち金 1000万円</span>
       </div>
+      <div id="tbdest"></div>
+      <div id="tbcalendar"><span id="tbyear">1年目</span><span id="tbmonth">4月</span></div>
+    </div>
+    <div id="hudbtns">
+      <button class="hudbtn" id="helpbtn" aria-label="あそびかた">?</button>
+      <button class="hudbtn" id="zoominbtn" aria-label="ズームイン">+</button>
+      <button class="hudbtn" id="zoomoutbtn" aria-label="ズームアウト">−</button>
+      <button class="hudbtn" id="viewbtn" aria-pressed="false">全体図</button>
+      <button class="hudbtn" id="mutebtn" aria-pressed="false">音 ON</button>
     </div>
     <div id="banner" role="status"></div>
     <div id="destarrow" hidden><span id="destarrowdir">➤</span><span id="destarrowtxt"></span></div>
     <div id="dock">
       <div id="dockmain">
-        <div id="whoami">
-          <div id="whoname"></div>
-          <div id="whocash"></div>
-        </div>
         <button id="dicebtn" disabled>サイコロ!</button>
         <div id="diceview"></div>
         <div id="hand"></div>
