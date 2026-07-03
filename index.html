@@ -26,14 +26,19 @@ button:focus-visible{outline:3px solid var(--blue); outline-offset:2px;}
 }
 /* ---------- map ---------- */
 #mapwrap{position:relative; overflow:hidden; background:
-  radial-gradient(1200px 900px at 30% 20%, #A9DCEC 0%, var(--sea) 55%, var(--sea-deep) 100%);}
+  linear-gradient(180deg, #C8E9F4 0%, #A9DCEC 16%, var(--sea) 46%, var(--sea-deep) 100%);}
 #map{width:100%; height:100%; display:block;}
 .edge{stroke:var(--line); stroke-width:3.4; fill:none; opacity:.75;}
 .edge.sea{stroke-dasharray:2 7; stroke-linecap:round; stroke:#3F7E9C; opacity:.8;}
 .landblob{stroke:#DECFA8; fill:var(--land); stroke-linejoin:round; stroke-linecap:round; opacity:.97;}
-.sq{stroke:#fff; stroke-width:2.4;}
+.landside{stroke:#C2AF83; fill:#C2AF83; stroke-linejoin:round; stroke-linecap:round; opacity:.95;}
+.sq{stroke:#fff; stroke-width:2.2;}
 .sq.blue{fill:var(--blue);} .sq.red{fill:var(--accent);} .sq.card{fill:var(--gold);}
 .sq.lotto{fill:var(--purple);} .sq.warp{fill:#25AFA5;}
+.sqside{stroke:none;}
+.sqside.blue{fill:#28527F;} .sqside.red{fill:#94382C;} .sqside.card{fill:#A87E22;}
+.sqside.lotto{fill:#603E8B;} .sqside.warp{fill:#177A72;}
+.citypill-side{fill:#B9AC89; stroke:var(--ink); stroke-width:2;}
 .sqlabel{fill:#fff; font-size:9px; font-weight:800; text-anchor:middle; pointer-events:none;}
 .citypill{fill:var(--panel); stroke:var(--ink); stroke-width:2; rx:6;}
 .cityname{font-size:10.5px; font-weight:800; text-anchor:middle; fill:var(--ink); pointer-events:none;}
@@ -79,8 +84,18 @@ button:focus-visible{outline:3px solid var(--blue); outline-offset:2px;}
 #dicebtn:active{transform:translateY(3px); box-shadow:0 1px 0 #A33327;}
 #dicebtn:disabled{background:#B9BDC7; box-shadow:0 4px 0 #8f939d; cursor:default;}
 #diceview{display:flex; gap:6px; min-height:44px; align-items:center;}
-.die{width:42px; height:42px; background:#fff; border:2.5px solid var(--ink); border-radius:9px;
-  display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:800;}
+.die{width:44px; height:44px; perspective:280px;}
+.die .cube{width:100%; height:100%; position:relative; transform-style:preserve-3d;
+  transition:transform .65s cubic-bezier(.2,.7,.3,1.15);}
+.die .f{position:absolute; inset:0; background:#fff; border:2.5px solid var(--ink); border-radius:9px;
+  display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:800; backface-visibility:hidden;}
+.die .f1{transform:rotateY(0deg) translateZ(22px);}
+.die .f2{transform:rotateY(90deg) translateZ(22px);}
+.die .f3{transform:rotateY(180deg) translateZ(22px);}
+.die .f4{transform:rotateY(-90deg) translateZ(22px);}
+.die .f5{transform:rotateX(90deg) translateZ(22px);}
+.die .f6{transform:rotateX(-90deg) translateZ(22px);}
+@media (prefers-reduced-motion:reduce){ .die .cube{transition:none;} }
 #hand{display:flex; gap:6px; flex-wrap:wrap; max-width:430px;}
 .cardchip{background:var(--paper); border:2px solid var(--gold); border-radius:8px; padding:5px 9px;
   font-size:12px; font-weight:800; line-height:1.25; text-align:left;}
@@ -402,6 +417,7 @@ const HAND_MAX=6;
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}}
 const G={nodes:[],adj:[],cityIdx:{}};
 const PRJX=lon=>(lon-126.8)*76, PRJY=lat=>(46.0-lat)*90;
+const FLAT=0.6, FY=y=>y*FLAT; // 俯瞰(2.5D)用にY軸を圧縮して描画する
 (function buildGraph(){
   const rng=mulberry32(20260703);
   CITIES.forEach((c,i)=>{
@@ -539,29 +555,32 @@ function renderMap(){
   gDrop=el("g",{"pointer-events":"none"}); gDest=el("g",{});
   gTok=el("g",{"pointer-events":"none"}); gOpt=el("g",{});
   for(const isl of COAST){
-    const d="M"+isl.map(p=>`${PRJX(p[0]).toFixed(1)},${PRJY(p[1]).toFixed(1)}`).join("L")+"Z";
+    const d="M"+isl.map(p=>`${PRJX(p[0]).toFixed(1)},${FY(PRJY(p[1])).toFixed(1)}`).join("L")+"Z";
+    el("path",{d,class:"landside","stroke-width":10,transform:"translate(0,9)"},gLand); // 陸地の厚み
     el("path",{d,class:"landblob","stroke-width":10},gLand);
   }
   for(const e of G.edgeLines){
-    const pts=e.chain.map(i=>`${G.nodes[i].x},${G.nodes[i].y}`).join(" ");
+    const pts=e.chain.map(i=>`${G.nodes[i].x},${FY(G.nodes[i].y)}`).join(" ");
     el("polyline",{points:pts,class:"edge"+(e.sea?" sea":"")},gEdge);
   }
-  const gInter=el("g",{},gNode), gCity=el("g",{},gNode); // 駅名標を中間マスより前面に
-  G.nodes.forEach((n,i)=>{
+  // 手前(南)のものが上にかぶさるよう、Y座標順に描画する
+  const order=G.nodes.map((n,i)=>i).sort((a,b)=>G.nodes[a].y-G.nodes[b].y);
+  for(const i of order){
+    const n=G.nodes[i], fy=FY(n.y);
+    const g=el("g",{},gNode);
     if(n.type==="city"){
-      const g=el("g",{},gCity);
-      el("rect",{x:n.x-n.pw/2,y:n.y-10,width:n.pw,height:20,rx:6,class:"citypill"},g);
-      el("text",{x:n.x,y:n.y+3.8,class:"cityname"},g).textContent=n.name;
+      el("rect",{x:n.x-n.pw/2,y:fy-6,width:n.pw,height:20,rx:6,class:"citypill-side"},g);
+      el("rect",{x:n.x-n.pw/2,y:fy-12,width:n.pw,height:20,rx:6,class:"citypill"},g);
+      el("text",{x:n.x,y:fy+1.8,class:"cityname"},g).textContent=n.name;
       const dots=el("g",{class:"dots"},g); g._dots=dots;
-      nodeEls.push(g);
     }else{
-      const g=el("g",{},gInter);
-      el("circle",{cx:n.x,cy:n.y,r:8.5,class:"sq "+n.type},g);
+      el("ellipse",{cx:n.x,cy:fy+5,rx:9,ry:6,class:"sqside "+n.type},g);
+      el("ellipse",{cx:n.x,cy:fy,rx:9,ry:6,class:"sq "+n.type},g);
       const lbl={blue:"+",red:"−",card:"C",lotto:"宝",warp:"W"}[n.type];
-      el("text",{x:n.x,y:n.y+3.4,class:"sqlabel"},g).textContent=lbl;
-      nodeEls.push(g);
+      el("text",{x:n.x,y:fy+3,class:"sqlabel"},g).textContent=lbl;
     }
-  });
+    nodeEls[i]=g;
+  }
   updateOwnDots(); drawDest(); drawTokens();
 }
 function updateOwnDots(){
@@ -569,28 +588,31 @@ function updateOwnDots(){
     if(n.type!=="city")return;
     const dots=nodeEls[i]._dots; dots.innerHTML="";
     const owners=S.propOwner?propOwners(n.ci):[];
-    owners.forEach((o,j)=>{ if(o>=0) el("circle",{cx:n.x-n.pw/2+5+j*8,cy:n.y+14,r:3.2,fill:PCOLORS[o],class:"owndot"},dots); });
+    owners.forEach((o,j)=>{ if(o>=0) el("circle",{cx:n.x-n.pw/2+5+j*8,cy:FY(n.y)+18,r:3.2,fill:PCOLORS[o],class:"owndot"},dots); });
     if(owners.length&&owners[0]>=0&&owners.every(o=>o===owners[0]))
-      el("text",{x:n.x+n.pw/2,y:n.y+18,"font-size":"10","font-weight":"800",fill:PCOLORS[owners[0]],"text-anchor":"end"},dots).textContent="独占!";
+      el("text",{x:n.x+n.pw/2,y:FY(n.y)+22,"font-size":"10","font-weight":"800",fill:PCOLORS[owners[0]],"text-anchor":"end"},dots).textContent="独占!";
   });
 }
 function drawDest(){
   gDest.innerHTML="";
   if(S.dest<0)return;
-  const n=G.nodes[S.dest];
-  el("circle",{cx:n.x,cy:n.y,r:22,class:"dest-ring"},gDest);
-  el("text",{x:n.x,y:n.y-20,class:"dest-flag"},gDest).textContent="▼目的地";
+  const n=G.nodes[S.dest], fy=FY(n.y);
+  el("ellipse",{cx:n.x,cy:fy,rx:26,ry:16,class:"dest-ring"},gDest);
+  el("line",{x1:n.x+20,y1:fy-6,x2:n.x+20,y2:fy-44,stroke:"var(--accent)","stroke-width":3.5,"stroke-linecap":"round"},gDest);
+  el("path",{d:`M${n.x+21.5},${fy-44} l24,7.5 l-24,7.5 Z`,fill:"var(--accent)",stroke:"#fff","stroke-width":1.5},gDest);
+  el("text",{x:n.x,y:fy-50,class:"dest-flag"},gDest).textContent="目的地";
 }
 function drawDrops(){
   if(!gDrop)return;
   gDrop.innerHTML="";
   for(const ni in S.drops){
-    const n=G.nodes[ni], k=S.drops[ni].length;
+    const n=G.nodes[ni], k=S.drops[ni].length, fy=FY(n.y);
     if(!k){delete S.drops[ni];continue;}
     const g=el("g",{},gDrop);
-    el("rect",{x:n.x+7,y:n.y-23,width:14,height:14,rx:3,
-      transform:`rotate(45 ${n.x+14} ${n.y-16})`,fill:"#F2B33D",stroke:"#fff","stroke-width":1.8},g);
-    el("text",{x:n.x+14,y:n.y-12,"font-size":"10","font-weight":"800","text-anchor":"middle",fill:"#4a3b12"},g).textContent=k;
+    el("ellipse",{cx:n.x+14,cy:fy-8,rx:8,ry:3,fill:"rgba(0,0,0,.22)"},g);
+    el("rect",{x:n.x+7,y:fy-31,width:14,height:14,rx:3,
+      transform:`rotate(45 ${n.x+14} ${fy-24})`,fill:"#F2B33D",stroke:"#fff","stroke-width":1.8},g);
+    el("text",{x:n.x+14,y:fy-20,"font-size":"10","font-weight":"800","text-anchor":"middle",fill:"#4a3b12"},g).textContent=k;
   }
 }
 function checkDrop(p){
@@ -621,14 +643,16 @@ function drawTokens(){
     const list=byPos[pos], n=G.nodes[pos];
     list.forEach((p,k)=>{
       const a=Math.PI*2*k/list.length - Math.PI/2;
-      const off=list.length>1?13:0;
-      const x=n.x+Math.cos(a)*off, y=n.y-17+Math.sin(a)*off*0.6;
+      const off=list.length>1?15:0;
+      const x=n.x+Math.cos(a)*off, base=FY(n.y)-8+Math.sin(a)*off*0.4;
       const g=el("g",{},gTok);
-      el("circle",{cx:x,cy:y,r:10.5,fill:p.color,class:"token"},g);
-      el("text",{x,y:y+3.8,class:"tokentxt"},g).textContent=p.name[0];
+      // 影+立ち姿のコマ(2.5D)
+      el("ellipse",{cx:x,cy:base+2,rx:9.5,ry:3.4,fill:"rgba(0,0,0,.28)"},g);
+      el("rect",{x:x-8.5,y:base-24,width:17,height:25,rx:8.5,fill:p.color,class:"token"},g);
+      el("text",{x,y:base-10.5,class:"tokentxt"},g).textContent=p.name[0];
       if(S.bonbi.holder===p.i){
-        el("circle",{cx:x+9,cy:y-9,r:7.5,class:"bonbadge"},g);
-        el("text",{x:x+9,y:y-5.8,class:"bonbadgetxt"},g).textContent=BONBI_CHAR[S.bonbi.form];
+        el("circle",{cx:x+9,cy:base-28,r:7.5,class:"bonbadge"},g);
+        el("text",{x:x+9,y:base-24.8,class:"bonbadgetxt"},g).textContent=BONBI_CHAR[S.bonbi.form];
       }
     });
   }
@@ -641,7 +665,7 @@ function camTo(x,y,w){
   if(fullView){
     const wrap=document.getElementById("mapwrap");
     const asp=wrap.clientHeight/Math.max(1,wrap.clientWidth);
-    camT.x=760; camT.y=910; camT.w=Math.max(1560,1880/asp);
+    camT.x=760; camT.y=FY(910); camT.w=Math.max(1560,FY(1880)/asp);
   } else {camT.x=x;camT.y=y;camT.w=w||FOLLOW_W;}
 }
 (function camLoop(){
@@ -652,7 +676,7 @@ function camTo(x,y,w){
   svg.setAttribute("viewBox",`${cam.x-cam.w/2} ${cam.y-h/2} ${cam.w} ${h}`);
   requestAnimationFrame(camLoop);
 })();
-function focusPlayer(p){const n=G.nodes[p.pos];camTo(n.x,n.y);}
+function focusPlayer(p){const n=G.nodes[p.pos];camTo(n.x,FY(n.y));}
 
 /* ================= UI helpers ================= */
 const $=id=>document.getElementById(id);
@@ -789,13 +813,28 @@ function newDest(exclude){
   S.dest=pick(cands);
   drawDest();
 }
+const DICE_ROT={1:[0,0],2:[0,-90],3:[0,180],4:[0,90],5:[-90,0],6:[90,0]};
 async function showDice(rolls){
   const dv=$("diceview"); dv.innerHTML="";
-  const dies=rolls.map(()=>{const d=document.createElement("div");d.className="die";d.textContent="?";dv.appendChild(d);return d;});
   SND.dice();
-  for(let f=0;f<7;f++){dies.forEach(d=>d.textContent=1+rnd(6));await sleep(55);}
-  dies.forEach((d,i)=>d.textContent=rolls[i]);
-  await sleep(450);
+  const cubes=rolls.map(()=>{
+    const d=document.createElement("div"); d.className="die";
+    const c=document.createElement("div"); c.className="cube";
+    for(let f=1;f<=6;f++){
+      const fa=document.createElement("div");
+      fa.className=`f f${f}`; fa.textContent=f;
+      c.appendChild(fa);
+    }
+    c.style.transform="rotateX(-30deg) rotateY(40deg)";
+    d.appendChild(c); dv.appendChild(d);
+    return c;
+  });
+  await sleep(60);
+  cubes.forEach((c,i)=>{
+    const [rx,ry]=DICE_ROT[rolls[i]];
+    c.style.transform=`rotateX(${rx+720}deg) rotateY(${ry-720}deg)`;
+  });
+  await sleep(750);
 }
 function chooseCpuStep(p,opts,target){
   const dt=distsFrom(target);
@@ -809,8 +848,8 @@ async function chooseHumanStep(p,opts){
     const marks=[];
     opts.forEach(o=>{
       const n=G.nodes[o];
-      const ring=el("circle",{cx:n.x,cy:n.y,r:17,class:"opt-ring"},gOpt);
-      const hit=el("circle",{cx:n.x,cy:n.y,r:26,class:"opt-hit"},gOpt);
+      const ring=el("ellipse",{cx:n.x,cy:FY(n.y),rx:18,ry:12,class:"opt-ring"},gOpt);
+      const hit=el("ellipse",{cx:n.x,cy:FY(n.y),rx:28,ry:19,class:"opt-hit"},gOpt);
       hit.addEventListener("click",()=>{
         marks.forEach(m=>m.remove());
         $("banner").classList.remove("show");
@@ -1016,7 +1055,7 @@ async function arrive(p){
   banner(`つぎの目的地は ${G.nodes[S.dest].name}!`,"good");
   log(`つぎの目的地は ${G.nodes[S.dest].name} にきまった!`,"sys");
   const dn=G.nodes[S.dest];
-  camTo(dn.x,dn.y,500);
+  camTo(dn.x,FY(dn.y),500);
   await sleep(900);
   updateAll();
 }
@@ -1385,7 +1424,7 @@ document.getElementById("startform").addEventListener("submit",e=>{
   log(`さいしょの目的地は ${G.nodes[S.dest].name}!`,"sys");
   banner(`目的地は ${G.nodes[S.dest].name}!しゅっぱつ!!`,"good");
   const dn=G.nodes[S.dest];
-  camTo(dn.x,dn.y,600);
+  camTo(dn.x,FY(dn.y),600);
   setTimeout(()=>{gameLoop();},1400*S.speed);
 });
 renderMap();
