@@ -65,8 +65,10 @@ export function renderMap(): void {
       g.style.cursor = "pointer"; // 駅をタップすると物件情報を確認できる
       g.addEventListener("click", () => onCityClick(n.ci));
     } else {
-      el("ellipse", { cx: n.x, cy: fy + 5, rx: 9, ry: 6, class: "sqside " + n.type }, g);
-      el("ellipse", { cx: n.x, cy: fy, rx: 9, ry: 6, class: "sq " + n.type }, g);
+      // 本家桃鉄にならい、マスは回転させたダイヤ型(四角)で表現する
+      const side = 12.5;
+      el("rect", { x: n.x - side / 2, y: fy - side / 2 + 5, width: side, height: side, rx: 2, transform: `rotate(45 ${n.x} ${fy + 5})`, class: "sqside " + n.type }, g);
+      el("rect", { x: n.x - side / 2, y: fy - side / 2, width: side, height: side, rx: 2, transform: `rotate(45 ${n.x} ${fy})`, class: "sq " + n.type }, g);
       const lbl = { blue: "+", red: "−", card: "C", lotto: "宝", warp: "W" }[n.type];
       el("text", { x: n.x, y: fy + 3, class: "sqlabel" }, g).textContent = lbl;
     }
@@ -152,18 +154,24 @@ export function drawTokens(): void {
     const list = [...listRaw].sort((a, b) => (a.i === S.turn ? 1 : 0) - (b.i === S.turn ? 1 : 0));
     list.forEach((p, k) => {
       // 重なったら横一列にならべる(円形配置より駅名が読みやすい)
-      const x = n.x + (k - (m - 1) / 2) * 17, base = FY(n.y) - 8;
-      const g = el("g", {}, gTok);
-      // 影+立ち姿のコマ(2.5D)
-      el("ellipse", { cx: x, cy: base + 2, rx: 9.5, ry: 3.4, fill: "rgba(0,0,0,.28)" }, g);
-      el("rect", { x: x - 8.5, y: base - 24, width: 17, height: 25, rx: 8.5, fill: p.color, class: "token" }, g);
-      el("text", { x, y: base - 10.5, class: "tokentxt" }, g).textContent = p.name[0];
+      const x = n.x + (k - (m - 1) / 2) * 19, base = FY(n.y) - 4;
+      const g = el("g", { class: "token" }, gTok);
+      // 影(2.5D)
+      el("ellipse", { cx: x, cy: base + 2, rx: 11, ry: 3.4, fill: "rgba(0,0,0,.28)" }, g);
+      // 小さな機関車シルエットのコマ
+      el("circle", { cx: x - 6, cy: base - 3, r: 2.6, class: "tokenwheel" }, g);
+      el("circle", { cx: x + 6, cy: base - 3, r: 2.6, class: "tokenwheel" }, g);
+      el("rect", { x: x - 9.5, y: base - 18, width: 3.4, height: 6.5, rx: 1, fill: p.color, class: "tokenchimney" }, g);
+      el("rect", { x: x + 2.5, y: base - 17, width: 7.5, height: 14, rx: 2.5, fill: p.color, class: "tokencab" }, g);
+      el("rect", { x: x + 3.8, y: base - 15, width: 5, height: 5.5, rx: 1, class: "tokenwindow" }, g);
+      el("rect", { x: x - 9.5, y: base - 12, width: 16, height: 9, rx: 3, fill: p.color, class: "tokenbody" }, g);
+      el("text", { x: x - 2, y: base - 5.2, class: "tokentxt" }, g).textContent = p.name[0];
       if (S.bonbi.holder === p.i) {
-        el("circle", { cx: x + 9, cy: base - 28, r: 7.5, class: "bonbadge" }, g);
-        el("text", { x: x + 9, y: base - 24.8, class: "bonbadgetxt" }, g).textContent = BONBI_CHAR[S.bonbi.form];
+        el("circle", { cx: x + 9, cy: base - 24, r: 7.5, class: "bonbadge" }, g);
+        el("text", { x: x + 9, y: base - 20.8, class: "bonbadgetxt" }, g).textContent = BONBI_CHAR[S.bonbi.form];
       }
       if (p.i === S.turn && !S.over) { // いま動かしているコマの目印
-        el("path", { d: `M${x - 8},${base - 39} h16 l-8,10 Z`, class: "turnmark" }, g);
+        el("path", { d: `M${x - 8},${base - 33} h16 l-8,10 Z`, class: "turnmark" }, g);
       }
     });
   }
