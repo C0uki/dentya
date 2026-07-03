@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>デン鉄 -DENTYA- 日本一周すごろく</title>
+<script>
+  window.si=window.si||function(){(window.siq=window.siq||[]).push(arguments);};
+</script>
+<script defer src="/_vercel/speed-insights/script.js"></script>
 <style>
 :root{
   --sea:#8FCFE3; --sea-deep:#6FB9D6; --land:#F4ECD6; --ink:#2A2E3A;
@@ -820,7 +824,7 @@ function showHowto(){
     <p><b>キミは鉄道会社の社長!</b>サイコロで日本中をめぐって物件を買い集め、決めた年数がおわったときに<b>総資産(現金+物件)がいちばん多い人が優勝</b>だ。</p>
     <p><b>1. サイコロをふる</b><br>自分の番が来たら「サイコロ!」ボタン。出た目のぶん進む。分かれ道では光っているマスをタップして進む方向をえらぶ(<b style="color:var(--accent)">赤いリング</b>が目的地への近道。「あと◯マス」も表示)。自分のコマには黄色い▼マークがつく。</p>
     <p><b>2. 目的地をめざす</b><br>目的地の駅にいちばん早く着くと<b>援助金</b>がもらえる。着いたら次の目的地が決まる。目的地が画面の外にあるときは、画面のはしに<b style="color:var(--accent)">赤い方向矢印</b>が出る。</p>
-    <p><b>3. 物件を買う</b><br>駅に止まるとその街の物件が買える。物件は毎年3月の<b>決算</b>で収益を生む資産。街の物件を全部買うと<b>独占で収益2倍</b>!持ち金がマイナスだと決算で利子10%がつくので注意。駅名標はいつでもタップして物件と持ち主を確認できる。</p>
+    <p><b>3. 物件を買う</b><br>駅に止まるとその街の物件が買える。物件は毎年3月の<b>決算</b>で収益を生む資産。街の物件を全部買うと<b>独占で収益2倍</b>!持ち金がマイナスだと決算で利子10%が��くので注意。駅名標はいつでもタップして物件と持ち主を確認できる。</p>
     <p><b>4. 貧乏神に注意</b><br>だれかが目的地に着いたとき、いちばん遠かった人に貧乏神がとりつく。放っておくと<b>キングボンビー・ボンビーJr.ポコン・ビッグボンビー</b>、さらには<b>デストロイ号</b>に変身して大あばれ!同じマスのだれかになすりつけるか、おはらいカードで追いはらおう。</p>
     <p><b>マスの色</b>:<b style="color:var(--blue)">青(+)</b>=お金がもらえる / <b style="color:var(--accent)">赤(−)</b>=お金をはらう / <b style="color:#B07E12">C</b>=カード / <b style="color:var(--purple)">宝</b>=宝くじ / <b style="color:#25AFA5">W</b>=ワープ</p>
     <p><b>カード</b>は移動が速くなる急行・特急・のぞみ、相手を足止めする<b>牛歩カード</b>など9種類。ポコンに吹き飛ばされた物件は金色マークの駅に落ちていて、<b>通るだけでタダで拾える</b>!</p>
@@ -987,7 +991,7 @@ async function landEffect(p){
   updateAll();
 }
 const HEROES={
-  "札幌":{n:"クラーク博士",msg:"少年よ、大志をいだけ!",f:async p=>{giveCard(p,"nozomi");}},
+  "札幌":{n:"クラーク博士",msg:"少���よ、大志をいだけ!",f:async p=>{giveCard(p,"nozomi");}},
   "仙台":{n:"伊達政宗",msg:"この街の発展、そちにも分けてやろう",f:async p=>{gainMoney(p,Math.round((500+rnd(500))*yearMult()),"政宗公からの軍資金!");}},
   "京都":{n:"紫式部",msg:"あなたの旅を、物語に書きとめました",f:async p=>{gainMoney(p,Math.round((400+rnd(400))*yearMult()),"物語のお礼!");}},
   "名古屋":{n:"織田信長",msg:"泣かぬなら 泣かせてみせよう 貧乏神",f:async p=>{
@@ -1152,7 +1156,7 @@ async function transferBonbi(to){
   S.bonbi.holder=to.i; S.bonbi.turns=0;
   SND.bonbi();
   log(`貧乏神が${from.name}から${to.name}になすりつけられた!`,"bad");
-  banner(`貧乏神が${to.name}にのりうつった!`,"warn");
+  banner(`貧乏神が${to.name}にのりうつ��た!`,"warn");
   await sleep(700);
   updateAll();
 }
