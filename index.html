@@ -106,7 +106,7 @@ button:focus-visible{outline:3px solid var(--blue); outline-offset:2px;}
 #log p{margin:0 0 3px; font-weight:600;}
 #log p.money{color:#7a6c00;} #log p.bad{color:var(--accent);} #log p.sys{color:#6b6f7c;}
 /* ---------- modal ---------- */
-#overlay{position:fixed; inset:0; background:rgba(30,34,46,.55); display:none; align-items:center; justify-content:center; z-index:50; padding:16px;}
+#overlay{position:fixed; inset:0; background:rgba(30,34,46,.55); display:none; align-items:center; justify-content:center; z-index:70; padding:16px;}
 #overlay.show{display:flex;}
 .modal{background:var(--panel); border:3px solid var(--ink); border-radius:16px; max-width:560px; width:100%;
   max-height:86dvh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.4);}
@@ -146,6 +146,8 @@ table.props td.num{text-align:right;}
 #startbtn{background:var(--accent); color:#fff; font-size:19px; font-weight:800; letter-spacing:.18em;
   border-radius:12px; padding:14px; box-shadow:0 5px 0 #A33327;}
 #startbtn:active{transform:translateY(3px); box-shadow:0 2px 0 #A33327;}
+#howtobtn{background:var(--ink); color:#fff; font-size:14px; font-weight:800; border-radius:10px; padding:11px;}
+.howto p{margin:0 0 10px;}
 .rulenote{font-size:12px; font-weight:700; color:#6b6f7c; line-height:1.7;}
 .finrow{display:grid; grid-template-columns:44px 1fr auto; gap:10px; align-items:center; background:var(--paper);
   border:2px solid var(--ink); border-radius:10px; padding:9px 13px; margin-bottom:7px; opacity:0; transform:translateY(8px);
@@ -166,6 +168,7 @@ table.props td.num{text-align:right;}
       <div class="hudcard" id="huddate">1年目 4月</div>
       <div class="hudcard" id="huddest"></div>
       <div id="hudbtns">
+        <button class="hudbtn" id="helpbtn" aria-label="あそびかた">?</button>
         <button class="hudbtn" id="zoominbtn" aria-label="ズームイン">+</button>
         <button class="hudbtn" id="zoomoutbtn" aria-label="ズームアウト">−</button>
         <button class="hudbtn" id="viewbtn" aria-pressed="false">全体図</button>
@@ -216,8 +219,9 @@ table.props td.num{text-align:right;}
       <label>演出スピード
         <select id="pspeed"><option value="1" selected>ふつう</option><option value="0.55">はやい</option><option value="0.3">ばくそく</option></select>
       </label>
-      <p class="rulenote">サイコロで進んで目的地を目指せ!駅では物件を買って収益アップ、独占すれば収益2倍。毎年3月に決算。目的地にビリだと貧乏神が…!最後に総資産がいちばん多い人の勝ち。</p>
+      <p class="rulenote">キミは鉄道会社の社長!サイコロで進んで目的地に一番乗りすれば援助金。駅では物件を買って毎年3月の決算で収益、独占すれば2倍。目的地にビリだと貧乏神が…!最後に総資産がいちばん多い人の勝ち。</p>
       <button id="startbtn" type="submit">出発進行!</button>
+      <button id="howtobtn" type="button">あそびかたをよむ(はじめての人向け)</button>
     </form>
   </div>
 </div>
@@ -386,7 +390,10 @@ const CARDS={
   gosoku:{n:"豪速球カード",d:"貧乏神をだれかに投げつける",kind:"throw",w:6},
   shield:{n:"シールドカード",d:"貧乏神を1回ふせぐ(自動)",kind:"passive",w:13},
   fuku:{n:"福袋カード",d:"開けるとお金が入っている",kind:"money",w:15},
+  ushiho:{n:"牛歩カード",d:"だれかを2ターン足止めする",kind:"slow",w:8},
 };
+const BONBI_LABEL={normal:"貧乏神",king:"キングボンビー",pokon:"ボンビーJr.ポコン",big:"ビッグボンビー",destroy:"デストロイ号"};
+const BONBI_CHAR={normal:"貧",king:"王",pokon:"ポ",big:"ビ",destroy:"滅"};
 const PCOLORS=["#D94F3D","#3E7BC0","#2E9E63","#8E5AC8"];
 const CPU_NAMES=["てつお","あかね","ボンじい"];
 const HAND_MAX=6;
@@ -469,7 +476,7 @@ const bfsDist=(a,b)=>distsFrom(a)[b];
 
 /* ================= state ================= */
 const S={players:[],turn:0,monthIdx:0,years:3,dest:-1,arrivals:0,
-  bonbi:{holder:-1,king:false,turns:0},over:false,speed:1};
+  bonbi:{holder:-1,form:"normal",turns:0},drops:{},over:false,speed:1};
 const yearOf=()=>Math.floor(S.monthIdx/12)+1;
 const monthOf=()=>(S.monthIdx+3)%12+1;
 const yearMult=()=>1+0.6*(yearOf()-1);
@@ -524,11 +531,12 @@ const SND={
 const NS="http://www.w3.org/2000/svg";
 const svg=document.getElementById("map");
 const el=(t,at,parent)=>{const e=document.createElementNS(NS,t);for(const k in at)e.setAttribute(k,at[k]);(parent||svg).appendChild(e);return e;};
-let gLand,gEdge,gNode,gDest,gTok,gOpt;
+let gLand,gEdge,gNode,gDrop,gDest,gTok,gOpt;
 const nodeEls=[];
 function renderMap(){
   svg.innerHTML=""; nodeEls.length=0;
-  gLand=el("g",{}); gEdge=el("g",{}); gNode=el("g",{}); gDest=el("g",{});
+  gLand=el("g",{}); gEdge=el("g",{}); gNode=el("g",{});
+  gDrop=el("g",{"pointer-events":"none"}); gDest=el("g",{});
   gTok=el("g",{"pointer-events":"none"}); gOpt=el("g",{});
   for(const isl of COAST){
     const d="M"+isl.map(p=>`${PRJX(p[0]).toFixed(1)},${PRJY(p[1]).toFixed(1)}`).join("L")+"Z";
@@ -573,6 +581,38 @@ function drawDest(){
   el("circle",{cx:n.x,cy:n.y,r:22,class:"dest-ring"},gDest);
   el("text",{x:n.x,y:n.y-20,class:"dest-flag"},gDest).textContent="▼目的地";
 }
+function drawDrops(){
+  if(!gDrop)return;
+  gDrop.innerHTML="";
+  for(const ni in S.drops){
+    const n=G.nodes[ni], k=S.drops[ni].length;
+    if(!k){delete S.drops[ni];continue;}
+    const g=el("g",{},gDrop);
+    el("rect",{x:n.x+7,y:n.y-23,width:14,height:14,rx:3,
+      transform:`rotate(45 ${n.x+14} ${n.y-16})`,fill:"#F2B33D",stroke:"#fff","stroke-width":1.8},g);
+    el("text",{x:n.x+14,y:n.y-12,"font-size":"10","font-weight":"800","text-anchor":"middle",fill:"#4a3b12"},g).textContent=k;
+  }
+}
+function checkDrop(p){
+  const dr=S.drops[p.pos];
+  if(!dr||!dr.length)return;
+  const keep=[];
+  for(const it of dr){
+    if(it.card){
+      if(p.cards.length<HAND_MAX){
+        p.cards.push(it.card);
+        log(`${p.name}:落ちていた${CARDS[it.card].n}を拾った!`,"money");
+      } else keep.push(it);
+    } else if(it.prop){
+      S.propOwner[it.prop.ci][it.prop.pi]=p.i;
+      log(`${p.name}:吹き飛ばされた物件「${CITIES[it.prop.ci][0]}の${it.prop.pr[0]}」をタダで手に入れた!`,"money");
+    }
+  }
+  if(keep.length)S.drops[p.pos]=keep; else delete S.drops[p.pos];
+  SND.coin();
+  banner(`${p.name}が落とし物を拾った!`,"good");
+  drawDrops();
+}
 function drawTokens(){
   gTok.innerHTML="";
   const byPos={};
@@ -588,7 +628,7 @@ function drawTokens(){
       el("text",{x,y:y+3.8,class:"tokentxt"},g).textContent=p.name[0];
       if(S.bonbi.holder===p.i){
         el("circle",{cx:x+9,cy:y-9,r:7.5,class:"bonbadge"},g);
-        el("text",{x:x+9,y:y-5.8,class:"bonbadgetxt"},g).textContent=S.bonbi.king?"王":"貧";
+        el("text",{x:x+9,y:y-5.8,class:"bonbadgetxt"},g).textContent=BONBI_CHAR[S.bonbi.form];
       }
     });
   }
@@ -656,7 +696,7 @@ function updateHUD(){
   const p=S.players[S.turn];
   const d=p?bfsDist(p.pos,S.dest):0;
   $("huddest").innerHTML=S.dest<0?"":
-    `<span class="to">▼${G.nodes[S.dest].name}</span> まで ${d} マス<small>とうちゃく賞金 ${fmtMoney(currentPrize())}</small>`;
+    `<span class="to">▼${G.nodes[S.dest].name}</span> まで ${d} マス<small>とうちゃく援助金 ${fmtMoney(currentPrize())}</small>`;
 }
 function currentPrize(){return Math.round((1000+600*S.arrivals)*yearMult());}
 function updateRanking(){
@@ -665,7 +705,7 @@ function updateRanking(){
   list.forEach((p,i)=>{
     const row=document.createElement("div");
     row.className="prow"+(p.i===S.turn?" active":"");
-    const bon=S.bonbi.holder===p.i?`<span class="bontag${S.bonbi.king?" king":""}">${S.bonbi.king?"キングボンビー":"貧乏神"}</span>`:"";
+    const bon=S.bonbi.holder===p.i?`<span class="bontag${S.bonbi.form!=="normal"?" king":""}">${BONBI_LABEL[S.bonbi.form]}</span>`:"";
     row.innerHTML=`<div class="rk">${i+1}</div>
       <div class="nm"><span class="chipdot" style="background:${p.color}"></span>${p.name}${p.human?"":" (CPU)"} ${bon}</div>
       <div class="total">${fmtMoney(totalAssets(p))}</div>
@@ -693,7 +733,7 @@ function updateDock(){
     });
   }
 }
-function updateAll(){updateHUD();updateRanking();updateDock();updateOwnDots();drawTokens();drawDest();}
+function updateAll(){updateHUD();updateRanking();updateDock();updateOwnDots();drawTokens();drawDest();drawDrops();}
 
 /* human action wiring */
 let pendingAction=null;
@@ -703,6 +743,20 @@ $("assetsbtn").onclick=()=>{const hp=S.players.find(p=>p.human);if(hp&&!$("overl
 $("viewbtn").onclick=e=>{fullView=!fullView;e.currentTarget.setAttribute("aria-pressed",fullView);
   if(fullView)camTo(0,0);else{const p=S.players[S.turn];if(p)focusPlayer(p);}};
 $("mutebtn").onclick=e=>{muted=!muted;e.currentTarget.setAttribute("aria-pressed",muted);e.currentTarget.textContent=muted?"音 OFF":"音 ON";};
+function showHowto(){
+  return modal({title:"あそびかた(はじめての人向け)",headKlass:"gold",html:`<div class="howto">
+    <p><b>キミは鉄道会社の社長!</b>サイコロで日本中をめぐって物件を買い集め、決めた年数がおわったときに<b>総資産(現金+物件)がいちばん多い人が優勝</b>だ。</p>
+    <p><b>1. サイコロをふる</b><br>自分の番が来たら「サイコロ!」ボタン。出た目のぶん進む。分かれ道では光っているマスをタップして進む方向をえらぶ。</p>
+    <p><b>2. 目的地をめざす</b><br>目的地の駅にいちばん早く着くと<b>援助金</b>がもらえる。着いたら次の目的地が決まる。</p>
+    <p><b>3. 物件を買う</b><br>駅に止まるとその街の物件が買える。物件は毎年3月の<b>決算</b>で収益を生む資産。街の物件を全部買うと<b>独占で収益2倍</b>!持ち金がマイナスだと決算で利子10%がつくので注意。</p>
+    <p><b>4. 貧乏神に注意</b><br>だれかが目的地に着いたとき、いちばん遠かった人に貧乏神がとりつく。放っておくと<b>キングボンビー・ボンビーJr.ポコン・ビッグボンビー</b>、さらには<b>デストロイ号</b>に変身して大あばれ!同じマスのだれかになすりつけるか、おはらいカードで追いはらおう。</p>
+    <p><b>マスの色</b>:<b style="color:var(--blue)">青(+)</b>=お金がもらえる / <b style="color:var(--accent)">赤(−)</b>=お金をはらう / <b style="color:#B07E12">C</b>=カード / <b style="color:var(--purple)">宝</b>=宝くじ / <b style="color:#25AFA5">W</b>=ワープ</p>
+    <p><b>カード</b>は移動が速くなる急行・特急・のぞみ、相手を足止めする<b>牛歩カード</b>など9種類。ポコンに吹き飛ばされた物件は金色マークの駅に落ちていて、<b>通るだけでタダで拾える</b>!</p>
+    <p>ときどき駅で<b>歴史ヒーロー</b>や<b>名産怪獣</b>に出会えることも…!</p>
+  </div>`});
+}
+$("helpbtn").onclick=()=>{ if(!$("overlay").classList.contains("show"))showHowto(); };
+document.getElementById("howtobtn").addEventListener("click",()=>showHowto());
 function refocus(){ if(fullView)return; const p=S.players[S.turn]; if(p)focusPlayer(p); }
 $("zoominbtn").onclick=()=>{FOLLOW_W=Math.max(220,FOLLOW_W-80);fullView=false;$("viewbtn").setAttribute("aria-pressed","false");refocus();};
 $("zoomoutbtn").onclick=()=>{FOLLOW_W=Math.min(900,FOLLOW_W+80);fullView=false;$("viewbtn").setAttribute("aria-pressed","false");refocus();};
@@ -776,6 +830,7 @@ async function moveBy(p,steps){
     else next= p.human? await chooseHumanStep(p,opts) : chooseCpuStep(p,opts,target);
     p.prev=p.pos; p.pos=next;
     SND.tick(); drawTokens(); focusPlayer(p);
+    checkDrop(p);
     await sleep(230);
     if(next===S.dest){ await arrive(p); return; }
   }
@@ -832,14 +887,59 @@ async function landEffect(p){
     const cid=pick(Object.values(G.cityIdx).filter(i=>i!==S.dest&&i!==p.pos));
     p.pos=cid;p.prev=-1;
     drawTokens();focusPlayer(p);
+    checkDrop(p);
     log(`${p.name}:ワープ駅で${G.nodes[cid].name}へ飛ばされた!`);
     await sleep(400);
     await cityStop(p,G.nodes[cid]);
   }
   updateAll();
 }
+const HEROES={
+  "札幌":{n:"クラーク博士",msg:"少年よ、大志をいだけ!",f:async p=>{giveCard(p,"nozomi");}},
+  "仙台":{n:"伊達政宗",msg:"この街の発展、そちにも分けてやろう",f:async p=>{gainMoney(p,Math.round((500+rnd(500))*yearMult()),"政宗公からの軍資金!");}},
+  "京都":{n:"紫式部",msg:"あなたの旅を、物語に書きとめました",f:async p=>{gainMoney(p,Math.round((400+rnd(400))*yearMult()),"物語のお礼!");}},
+  "名古屋":{n:"織田信長",msg:"泣かぬなら 泣かせてみせよう 貧乏神",f:async p=>{
+    if(S.bonbi.holder===p.i){
+      S.bonbi.holder=-1;S.bonbi.form="normal";
+      log("織田信長が貧乏神を斬り捨てた!","money");
+      banner("信長が貧乏神を追い払った!","good");
+    }else gainMoney(p,Math.round(500*yearMult()),"信長からの軍資金!");
+  }},
+  "高知":{n:"坂本龍馬",msg:"日本の夜明けぜよ!ぶっとんでいきや!",f:async p=>{giveCard(p,"buttobi");}},
+  "鹿児島":{n:"西郷どん",msg:"おいどんが守っちゃる",f:async p=>{giveCard(p,"shield");}},
+};
+const KAIJU={
+  "青森":"名産怪獣リンゴリラ",
+  "高松":"名産怪獣ウドンガー",
+  "宮崎":"名産怪獣マンゴラス",
+  "静岡":"名産怪獣チャバケーン",
+  "広島":"名産怪獣モミジロン",
+};
 async function cityStop(p,n){
   const ci=n.ci;
+  const hero=HEROES[n.name];
+  if(hero&&Math.random()<0.35){
+    SND.fanfare();
+    await modal({title:"歴史ヒーロー登場!",headKlass:"gold",
+      html:`<p><b>${hero.n}</b>があらわれた!</p><p>「${hero.msg}」</p>`});
+    await hero.f(p);
+    updateAll();
+  }
+  const kj=KAIJU[n.name];
+  if(kj&&Math.random()<0.25){
+    if(Math.random()<0.5){
+      SND.fanfare();
+      await modal({title:`${kj}あらわる!`,headKlass:"gold",
+        html:`<p><b>${kj}</b>が${p.name}になついた!</p><p>名産品をどっさり分けてくれた!</p>`});
+      gainMoney(p,Math.round((300+rnd(400))*yearMult()),`${kj}のおすそわけ!`);
+    }else{
+      SND.bad();
+      await modal({title:`${kj}あらわる!`,headKlass:"evil",
+        html:`<p><b>${kj}</b>が大あばれ!</p><p>${p.name}は巻きこまれてしまった…</p>`});
+      gainMoney(p,-Math.round((200+rnd(400))*yearMult()),`${kj}が大あばれ…`);
+    }
+    updateAll();
+  }
   const buyable=CITIES[ci][3].map((pr,pi)=>({pr,pi})).filter(x=>S.propOwner[ci][x.pi]<0);
   if(!buyable.length){log(`${p.name}:${n.name}に停車(売り物件なし)`,"sys");return;}
   if(p.human){ await buyDialog(p,ci); }
@@ -900,9 +1000,9 @@ async function arrive(p){
   const prize=currentPrize();
   p.cash+=prize; S.arrivals++;
   SND.fanfare();
-  log(`${p.name}:目的地 ${G.nodes[S.dest].name} に一番乗り!賞金${fmtMoney(prize)}!`,"money");
+  log(`${p.name}:目的地 ${G.nodes[S.dest].name} に一番乗り!援助金${fmtMoney(prize)}!`,"money");
   await modal({title:"目的地とうちゃく!",headKlass:"gold",
-    html:`<p><b>${p.name}</b>が <b>${G.nodes[S.dest].name}</b> に一番乗り!</p><p class="bignum gold">賞金 ${fmtMoney(prize)}</p>`});
+    html:`<p><b>${p.name}</b>が <b>${G.nodes[S.dest].name}</b> に一番乗り!</p><p class="bignum gold">援助金 ${fmtMoney(prize)}</p>`});
   const old=S.dest;
   newDest(old);
   // 貧乏神:新目的地からいちばん遠いプレイヤーに憑依
@@ -929,7 +1029,7 @@ async function attachBonbi(q){
     SND.card();
     return;
   }
-  S.bonbi={holder:q.i,king:false,turns:0};
+  S.bonbi={holder:q.i,form:"normal",turns:0};
   SND.bonbi();
   await modal({title:"貧乏神があらわれた!",headKlass:"evil",
     html:`<p>ビリだった <b>${q.name}</b> に<br><b style="font-size:20px">貧乏神</b>がとりついた…!</p><p>毎ターンわるさをするぞ。だれかに なすりつけろ!</p>`});
@@ -964,31 +1064,79 @@ async function transferBonbi(to){
   await sleep(700);
   updateAll();
 }
+function ownedProps(pl){
+  const owned=[];
+  for(let ci=0;ci<CITIES.length;ci++)CITIES[ci][3].forEach((pr,pi)=>{if(S.propOwner[ci][pi]===pl)owned.push({ci,pi,pr});});
+  return owned;
+}
+async function destroyProp(p,who){
+  const owned=ownedProps(p.i);
+  if(!owned.length)return false;
+  const t=pick(owned);
+  S.propOwner[t.ci][t.pi]=-1;
+  SND.king();
+  log(`${who}:${p.name}の「${CITIES[t.ci][0]}の${t.pr[0]}」を破壊した!!`,"bad");
+  await modal({title:`${who}のわるさ`,headKlass:"evil",
+    html:`<p><b>${CITIES[t.ci][0]}の${t.pr[0]}</b>(${fmtMoney(t.pr[1])})が<br><b style="color:var(--accent)">こなごなに破壊された!!</b></p>`});
+  return true;
+}
 async function mischief(p){
-  const B=S.bonbi;
+  const B=S.bonbi, ym=yearMult();
   await sleep(400);
-  if(B.king){
+  if(B.form==="king"){
     if(Math.random()<0.4){
-      // 物件破壊
-      const owned=[];
-      for(let ci=0;ci<CITIES.length;ci++)CITIES[ci][3].forEach((pr,pi)=>{if(S.propOwner[ci][pi]===p.i)owned.push({ci,pi,pr});});
-      if(owned.length){
-        const t=pick(owned);
-        S.propOwner[t.ci][t.pi]=-1;
-        SND.king();
-        log(`キングボンビー:${p.name}の「${t.ci>=0?CITIES[t.ci][0]:""}の${t.pr[0]}」を破壊した!!`,"bad");
-        await modal({title:"キングボンビーのわるさ",headKlass:"evil",
-          html:`<p><b>${CITIES[t.ci][0]}の${t.pr[0]}</b>(${fmtMoney(t.pr[1])})が<br><b style="color:var(--accent)">こなごなに破壊された!!</b></p>`});
-      } else {
-        const amt=Math.round((1200+rnd(2800))*yearMult());
-        gainMoney(p,-amt,"キングボンビーがお金をばらまいた!!");
-      }
+      if(!await destroyProp(p,"キングボンビー"))
+        gainMoney(p,-Math.round((1200+rnd(2800))*ym),"キングボンビーがお金をばらまいた!!");
     }else{
-      const amt=Math.round((1200+rnd(2800))*yearMult());
       SND.king();
-      gainMoney(p,-amt,"キングボンビーの豪遊!!");
+      gainMoney(p,-Math.round((1200+rnd(2800))*ym),"キングボンビーの豪遊!!");
     }
-  }else{
+  }
+  else if(B.form==="destroy"){
+    SND.king();
+    let broke=0;
+    for(let k=0;k<2;k++)if(await destroyProp(p,"デストロイ号"))broke++;
+    const amt=Math.round((2000+rnd(4000))*ym);
+    gainMoney(p,-amt,"デストロイ号の破壊光線!!");
+    if(!broke)log("デストロイ号:破壊する物件がなくて お金だけ焼きはらった…","bad");
+  }
+  else if(B.form==="pokon"){
+    const owned=ownedProps(p.i);
+    if(owned.length){
+      const cnt=Math.min(owned.length,1+rnd(2));
+      const d=distsFrom(p.pos);
+      const cand=G.nodes.map((n,i)=>i).filter(i=>d[i]>=2&&d[i]<=8&&i!==S.dest);
+      const names=[];
+      for(let k=0;k<cnt;k++){
+        const idx=rnd(owned.length);
+        const t=owned.splice(idx,1)[0];
+        S.propOwner[t.ci][t.pi]=-1;
+        (S.drops[pick(cand)]??=[]).push({prop:t});
+        names.push(`${CITIES[t.ci][0]}の${t.pr[0]}`);
+      }
+      SND.bad();
+      drawDrops();
+      log(`ポコン:${p.name}の物件「${names.join("、")}」を吹き飛ばした!近くの駅に落ちている…`,"bad");
+      await modal({title:"ボンビーJr.ポコンのいたずら",headKlass:"evil",
+        html:`<p><b>${names.join("」「")}</b>が<br><b style="color:var(--accent)">ポコーン!と吹き飛ばされた!!</b></p><p>近くの駅に落ちている。だれでも拾えるぞ…!(金色のマーク)</p>`});
+    }else{
+      gainMoney(p,-Math.round((200+rnd(500))*ym),"ポコンがだだをこねて出費…");
+    }
+  }
+  else if(B.form==="big"){
+    const n=1+rnd(6);
+    SND.bad();
+    if(p.cash<0){
+      const before=p.cash;
+      p.cash=Math.round(p.cash*(1+n*0.15));
+      log(`ビッグボンビー:サイコロの目は${n}!${p.name}の借金が${fmtMoney(p.cash-before)}ふくらんだ!!`,"bad");
+      await modal({title:"ビッグボンビーの悪行",headKlass:"evil",
+        html:`<p>ビッグボンビーがサイコロをふった…出た目は<b>${n}</b>!</p><p class="bignum bad">借金が ${n*15}% 増えた!!</p><p>持ち金:${fmtMoney(p.cash)}</p>`});
+    }else{
+      gainMoney(p,-Math.round((n*150+rnd(300))*ym),`ビッグボンビーのサイコロ(${n})で大出費…`);
+    }
+  }
+  else{
     const r=Math.random();
     if(r<0.2&&p.cards.length){
       const idx=rnd(p.cards.length);
@@ -996,21 +1144,34 @@ async function mischief(p){
       SND.bad();
       log(`貧乏神:${p.name}の${CARDS[cid].n}を線路に捨てた…`,"bad");
       banner(`貧乏神が${CARDS[cid].n}を捨てた…`,"warn");
-    }else if(r<0.85){
-      const amt=Math.round((100+rnd(450))*yearMult());
-      gainMoney(p,-amt,"貧乏神のむだづかい…");
+    }else if(r<0.38){
+      p.slow=(p.slow||0)+1;
+      SND.bad();
+      log(`貧乏神:${p.name}にしがみついて足止め!つぎのサイコロは1だ…`,"bad");
+      banner("貧乏神が足止めしてきた!","warn");
+    }else if(r<0.9){
+      gainMoney(p,-Math.round((100+rnd(450))*ym),"貧乏神のむだづかい…");
     }else{
       log(`貧乏神:きょうは ひるねをしている…`,"sys");
       banner("貧乏神はひるね中…","");
     }
   }
   B.turns++;
-  if(!B.king&&B.turns>=2&&Math.random()<0.18){
-    B.king=true;
+  if(B.form==="normal"&&B.turns>=2&&Math.random()<0.22){
+    const r=Math.random();
+    B.form= r<0.4?"king" : r<0.7?"pokon" : "big";
     SND.king();
+    const desc={king:"わるさが超凶悪になるぞ…!",pokon:"パパよりめいわく!?物件が吹き飛ばされるぞ…!",big:"借金がどんどんふくらむぞ…!"}[B.form];
     await modal({title:"!!!!",headKlass:"evil",
-      html:`<p style="text-align:center" class="bignum bad">キングボンビー誕生!!</p><p>貧乏神が変身した!わるさが超凶悪になるぞ…!<br>いそいで だれかに なすりつけろ!!</p>`});
-    log("貧乏神がキングボンビーに変身した!!","bad");
+      html:`<p style="text-align:center" class="bignum bad">${BONBI_LABEL[B.form]}が誕生!!</p><p>貧乏神が変身した!${desc}<br>いそいで だれかに なすりつけろ!!</p>`});
+    log(`貧乏神が${BONBI_LABEL[B.form]}に変身した!!`,"bad");
+  }
+  else if(B.form==="king"&&B.turns>=4&&yearOf()*2>=S.years&&Math.random()<0.2){
+    B.form="destroy";
+    SND.king();
+    await modal({title:"!!!!!!",headKlass:"evil",
+      html:`<p style="text-align:center" class="bignum bad">デストロイ号 発進!!</p><p>キングボンビーが最凶形態に変身した!<br>物件もお金も まとめて破壊されるぞ…!!</p>`});
+    log("キングボンビーがデストロイ号に変身した!!","bad");
   }
   updateAll();
 }
@@ -1027,6 +1188,7 @@ async function useCard(p,idx){
     const cid2=pick(Object.values(G.cityIdx).filter(i=>i!==p.pos));
     p.pos=cid2;p.prev=-1;
     drawTokens();focusPlayer(p);
+    checkDrop(p);
     await sleep(500);
     if(cid2===S.dest){await arrive(p);}else{await cityStop(p,G.nodes[cid2]);}
     return {done:true};
@@ -1036,10 +1198,20 @@ async function useCard(p,idx){
     gainMoney(p,Math.round((200+rnd(600))*yearMult()),"福袋カード!");
     return null;
   }
+  if(c.kind==="slow"){
+    p.cards.splice(idx,1);
+    const t=pick(S.players.filter(q=>q.i!==p.i));
+    t.slow=(t.slow||0)+2;
+    SND.card();
+    log(`${p.name}:牛歩カード!${t.name}を足止めした!`);
+    banner(`${t.name}は2ターンのあいだサイコロが1に…!`,"warn");
+    await sleep(500);
+    return null;
+  }
   if(c.kind==="ohara"){
     if(S.bonbi.holder!==p.i){banner("貧乏神がついていないと使えないよ","warn");return null;}
     p.cards.splice(idx,1);
-    S.bonbi.holder=-1;
+    S.bonbi.holder=-1; S.bonbi.form="normal";
     SND.fanfare();
     log(`${p.name}:おはらいカードで貧乏神を追いはらった!`,"money");
     await modal({title:"おはらい成功!",headKlass:"gold",html:"<p>貧乏神は とおくへ 飛んでいった…!</p>"});
@@ -1072,6 +1244,8 @@ function cpuPreRoll(p){
   }
   const f=p.cards.indexOf("fuku");
   if(f>=0&&Math.random()<0.5)return {card:f};
+  const u=p.cards.indexOf("ushiho");
+  if(u>=0&&Math.random()<0.35)return {card:u};
   return {roll:true};
 }
 /* ---------- turn ---------- */
@@ -1105,7 +1279,13 @@ async function doTurn(p){
     }
   }
   if(!done){
-    const rolls=Array.from({length:diceCount},()=>1+rnd(6));
+    let rolls=Array.from({length:diceCount},()=>1+rnd(6));
+    if(p.slow>0){
+      p.slow--;
+      rolls=[1];
+      banner(`${p.name}は足止め中…サイコロは1!`,"warn");
+      log(`${p.name}:足止めされていてサイコロが1しか出ない…`,"bad");
+    }
     await showDice(rolls);
     const total=rolls.reduce((a,b)=>a+b,0);
     log(`${p.name}:サイコロは ${rolls.join("・")} → ${total}マス進む`,"sys");
@@ -1191,10 +1371,11 @@ document.getElementById("startform").addEventListener("submit",e=>{
   S.speed=+$("pspeed").value;
   const ncpu=+$("pcpus").value;
   S.propOwner=CITIES.map(c=>c[3].map(()=>-1));
+  S.drops={};
   const start=G.cityIdx["東京"];
-  S.players=[{i:0,name,human:true,color:PCOLORS[0],cash:1000,cards:["kyuko"],pos:start,prev:-1}];
+  S.players=[{i:0,name,human:true,color:PCOLORS[0],cash:1000,cards:["kyuko"],pos:start,prev:-1,slow:0}];
   for(let k=0;k<ncpu;k++)
-    S.players.push({i:k+1,name:CPU_NAMES[k],human:false,color:PCOLORS[k+1],cash:1000,cards:["kyuko"],pos:start,prev:-1});
+    S.players.push({i:k+1,name:CPU_NAMES[k],human:false,color:PCOLORS[k+1],cash:1000,cards:["kyuko"],pos:start,prev:-1,slow:0});
   newDest(start);
   fullView=false;
   $("viewbtn").setAttribute("aria-pressed","false");
@@ -1209,6 +1390,7 @@ document.getElementById("startform").addEventListener("submit",e=>{
 });
 renderMap();
 camTo(0,0); fullView=true; // タイトル裏では全体図
+window.DENTYA={get state(){return S;},G,CITIES}; // デバッグ用
 document.getElementById("viewbtn").setAttribute("aria-pressed","true");
 </script>
 
