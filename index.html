@@ -46,6 +46,17 @@ button:focus-visible{outline:3px solid var(--blue); outline-offset:2px;}
 .owndot{stroke:#fff; stroke-width:1;}
 .opt-hit{fill:transparent; cursor:pointer;}
 .opt-ring{fill:none; stroke:#fff; stroke-width:3; pointer-events:none; animation:pulse 1s infinite;}
+.opt-ring.rec{stroke:var(--accent);}
+.opt-lbl{font-size:11px; font-weight:800; fill:#fff; text-anchor:middle; pointer-events:none;
+  paint-order:stroke; stroke:var(--ink); stroke-width:3px;}
+.opt-lbl.rec{fill:#FFD34D;}
+.turnmark{fill:#FFD34D; stroke:var(--ink); stroke-width:1.6; animation:bob .7s infinite alternate ease-in-out;}
+@keyframes bob{from{transform:translateY(0);}to{transform:translateY(-6px);}}
+@media (prefers-reduced-motion:reduce){ .turnmark{animation:none;} }
+#destarrow{position:absolute; transform:translate(-50%,-50%); background:var(--accent); color:#fff;
+  font-weight:800; font-size:12.5px; padding:6px 12px; border-radius:999px; display:flex; gap:7px;
+  align-items:center; box-shadow:var(--shadow); pointer-events:none; z-index:4; white-space:nowrap;}
+#destarrowdir{display:inline-block; font-size:14px;}
 .dest-ring{fill:none; stroke:var(--accent); stroke-width:4; animation:pulse 1.4s infinite; pointer-events:none;}
 .dest-flag{font-size:13px; font-weight:800; fill:var(--accent); text-anchor:middle; pointer-events:none;}
 @keyframes pulse{0%{opacity:1; stroke-width:4;}50%{opacity:.35; stroke-width:7;}100%{opacity:1; stroke-width:4;}}
@@ -191,6 +202,7 @@ table.props td.num{text-align:right;}
       </div>
     </div>
     <div id="banner" role="status"></div>
+    <div id="destarrow" hidden><span id="destarrowdir">➤</span><span id="destarrowtxt"></span></div>
     <div id="dock">
       <div id="dockmain">
         <div id="whoami">
@@ -431,12 +443,12 @@ const FLAT=0.6, FY=y=>y*FLAT; // 俯瞰(2.5D)用にY軸を圧縮して描画す�
   for(let it=0;it<50;it++){
     for(let a=0;a<CITIES.length;a++)for(let b=a+1;b<CITIES.length;b++){
       const A=G.nodes[a],B=G.nodes[b];
-      const dx=B.x-A.x,dy=B.y-A.y,d=Math.hypot(dx,dy),min=46;
+      const dx=B.x-A.x,dy=B.y-A.y,d=Math.hypot(dx,dy),min=50;
       if(d<min&&d>0.01){const push=(min-d)/2/d;A.x-=dx*push;A.y-=dy*push;B.x+=dx*push;B.y+=dy*push;}
     }
     for(let a=0;a<CITIES.length;a++){
       const A=G.nodes[a],an=anchors[a];
-      const dx=A.x-an.x,dy=A.y-an.y,d=Math.hypot(dx,dy),cap=26;
+      const dx=A.x-an.x,dy=A.y-an.y,d=Math.hypot(dx,dy),cap=30;
       if(d>cap){A.x=an.x+dx/d*cap;A.y=an.y+dy/d*cap;}
     }
   }
@@ -573,6 +585,8 @@ function renderMap(){
       el("rect",{x:n.x-n.pw/2,y:fy-12,width:n.pw,height:20,rx:6,class:"citypill"},g);
       el("text",{x:n.x,y:fy+1.8,class:"cityname"},g).textContent=n.name;
       const dots=el("g",{class:"dots"},g); g._dots=dots;
+      g.style.cursor="pointer"; // 駅をタップすると物件情報を確認できる
+      g.addEventListener("click",()=>{ if(!$("overlay").classList.contains("show"))showCityInfo(n.ci); });
     }else{
       el("ellipse",{cx:n.x,cy:fy+5,rx:9,ry:6,class:"sqside "+n.type},g);
       el("ellipse",{cx:n.x,cy:fy,rx:9,ry:6,class:"sq "+n.type},g);
@@ -640,11 +654,12 @@ function drawTokens(){
   const byPos={};
   S.players.forEach(p=>{(byPos[p.pos]??=[]).push(p);});
   for(const pos in byPos){
-    const list=byPos[pos], n=G.nodes[pos];
+    const list=byPos[pos], n=G.nodes[pos], m=list.length;
+    // 手番のコマを最後(最前面)に描く
+    list.sort((a,b)=>(a.i===S.turn?1:0)-(b.i===S.turn?1:0));
     list.forEach((p,k)=>{
-      const a=Math.PI*2*k/list.length - Math.PI/2;
-      const off=list.length>1?15:0;
-      const x=n.x+Math.cos(a)*off, base=FY(n.y)-8+Math.sin(a)*off*0.4;
+      // 重なったら横一列にならべる(円形配置より駅名が読みやすい)
+      const x=n.x+(k-(m-1)/2)*17, base=FY(n.y)-8;
       const g=el("g",{},gTok);
       // 影+立ち姿のコマ(2.5D)
       el("ellipse",{cx:x,cy:base+2,rx:9.5,ry:3.4,fill:"rgba(0,0,0,.28)"},g);
@@ -653,6 +668,9 @@ function drawTokens(){
       if(S.bonbi.holder===p.i){
         el("circle",{cx:x+9,cy:base-28,r:7.5,class:"bonbadge"},g);
         el("text",{x:x+9,y:base-24.8,class:"bonbadgetxt"},g).textContent=BONBI_CHAR[S.bonbi.form];
+      }
+      if(p.i===S.turn&&!S.over){ // いま動かしているコマの目印
+        el("path",{d:`M${x-8},${base-39} h16 l-8,10 Z`,class:"turnmark"},g);
       }
     });
   }
@@ -674,8 +692,26 @@ function camTo(x,y,w){
   const asp=wrap.clientHeight/Math.max(1,wrap.clientWidth);
   const h=cam.w*asp;
   svg.setAttribute("viewBox",`${cam.x-cam.w/2} ${cam.y-h/2} ${cam.w} ${h}`);
+  updateDestArrow(wrap,cam.x-cam.w/2,cam.y-h/2,cam.w,h);
   requestAnimationFrame(camLoop);
 })();
+// 目的地が画面の外にあるとき、画面のはしに方向矢印を出す
+function updateDestArrow(wrap,vx,vy,vw,vh){
+  const box=document.getElementById("destarrow");
+  if(S.dest<0||S.over||S.players.length===0){box.hidden=true;return;}
+  const W=wrap.clientWidth,H=wrap.clientHeight;
+  const n=G.nodes[S.dest];
+  const sx=(n.x-vx)/vw*W, sy=(FY(n.y)-vy)/vh*H;
+  if(sx>=30&&sx<=W-30&&sy>=30&&sy<=H-30){box.hidden=true;return;}
+  const cx=W/2,cy=H/2,dx=sx-cx,dy=sy-cy;
+  const padY=dy<0?150:120; // 上はバナーやHUDと重ならないよう広めに
+  const t=Math.min((W/2-80)/Math.abs(dx||1e-9),(H/2-padY)/Math.abs(dy||1e-9),1);
+  box.style.left=(cx+dx*t)+"px";
+  box.style.top=(cy+dy*t)+"px";
+  document.getElementById("destarrowdir").style.transform=`rotate(${Math.atan2(dy,dx)*180/Math.PI}deg)`;
+  document.getElementById("destarrowtxt").textContent=`目的地 ${n.name}`;
+  box.hidden=false;
+}
 function focusPlayer(p){const n=G.nodes[p.pos];camTo(n.x,FY(n.y));}
 
 /* ================= UI helpers ================= */
@@ -759,6 +795,18 @@ function updateDock(){
 }
 function updateAll(){updateHUD();updateRanking();updateDock();updateOwnDots();drawTokens();drawDest();drawDrops();}
 
+function showCityInfo(ci){
+  const rows=CITIES[ci][3].map((pr,pi)=>{
+    const o=S.propOwner?S.propOwner[ci][pi]:-1;
+    return `<tr><td>${pr[0]}</td><td class="num">${fmtMoney(pr[1])}</td><td class="num">${pr[2]}%</td><td>${ownerTag(o)}</td></tr>`;
+  }).join("");
+  const owners=S.propOwner?propOwners(ci):[];
+  const mono=owners.length&&owners[0]>=0&&owners.every(o=>o===owners[0]);
+  modal({title:`${CITIES[ci][0]}駅の物件じょうほう`,html:
+    `${mono?`<p><b style="color:#B07E12">★${S.players[owners[0]].name}が独占中!(収益2倍)</b></p>`:""}
+     <table class="props"><tr><th>物件</th><th style="text-align:right">価格</th><th style="text-align:right">収益率</th><th>持ち主</th></tr>${rows}</table>
+     <p class="rulenote" style="margin-top:8px">この駅に止まると、売り物件を買えるよ。</p>`});
+}
 /* human action wiring */
 let pendingAction=null;
 $("dicebtn").onclick=()=>{ if(pendingAction){const r=pendingAction;pendingAction=null;r({kind:"roll"});} };
@@ -770,9 +818,9 @@ $("mutebtn").onclick=e=>{muted=!muted;e.currentTarget.setAttribute("aria-pressed
 function showHowto(){
   return modal({title:"あそびかた(はじめての人向け)",headKlass:"gold",html:`<div class="howto">
     <p><b>キミは鉄道会社の社長!</b>サイコロで日本中をめぐって物件を買い集め、決めた年数がおわったときに<b>総資産(現金+物件)がいちばん多い人が優勝</b>だ。</p>
-    <p><b>1. サイコロをふる</b><br>自分の番が来たら「サイコロ!」ボタン。出た目のぶん進む。分かれ道では光っているマスをタップして進む方向をえらぶ。</p>
-    <p><b>2. 目的地をめざす</b><br>目的地の駅にいちばん早く着くと<b>援助金</b>がもらえる。着いたら次の目的地が決まる。</p>
-    <p><b>3. 物件を買う</b><br>駅に止まるとその街の物件が買える。物件は毎年3月の<b>決算</b>で収益を生む資産。街の物件を全部買うと<b>独占で収益2倍</b>!持ち金がマイナスだと決算で利子10%がつくので注意。</p>
+    <p><b>1. サイコロをふる</b><br>自分の番が来たら「サイコロ!」ボタン。出た目のぶん進む。分かれ道では光っているマスをタップして進む方向をえらぶ(<b style="color:var(--accent)">赤いリング</b>が目的地への近道。「あと◯マス」も表示)。自分のコマには黄色い▼マークがつく。</p>
+    <p><b>2. 目的地をめざす</b><br>目的地の駅にいちばん早く着くと<b>援助金</b>がもらえる。着いたら次の目的地が決まる。目的地が画面の外にあるときは、画面のはしに<b style="color:var(--accent)">赤い方向矢印</b>が出る。</p>
+    <p><b>3. 物件を買う</b><br>駅に止まるとその街の物件が買える。物件は毎年3月の<b>決算</b>で収益を生む資産。街の物件を全部買うと<b>独占で収益2倍</b>!持ち金がマイナスだと決算で利子10%がつくので注意。駅名標はいつでもタップして物件と持ち主を確認できる。</p>
     <p><b>4. 貧乏神に注意</b><br>だれかが目的地に着いたとき、いちばん遠かった人に貧乏神がとりつく。放っておくと<b>キングボンビー・ボンビーJr.ポコン・ビッグボンビー</b>、さらには<b>デストロイ号</b>に変身して大あばれ!同じマスのだれかになすりつけるか、おはらいカードで追いはらおう。</p>
     <p><b>マスの色</b>:<b style="color:var(--blue)">青(+)</b>=お金がもらえる / <b style="color:var(--accent)">赤(−)</b>=お金をはらう / <b style="color:#B07E12">C</b>=カード / <b style="color:var(--purple)">宝</b>=宝くじ / <b style="color:#25AFA5">W</b>=ワープ</p>
     <p><b>カード</b>は移動が速くなる急行・特急・のぞみ、相手を足止めする<b>牛歩カード</b>など9種類。ポコンに吹き飛ばされた物件は金色マークの駅に落ちていて、<b>通るだけでタダで拾える</b>!</p>
@@ -843,19 +891,24 @@ function chooseCpuStep(p,opts,target){
   return best;
 }
 async function chooseHumanStep(p,opts){
-  banner("すすむ方向をえらんでね","",true);
+  banner("すすむ方向をえらんでね(赤いリング=目的地への近道)","",true);
+  const dd=distsFrom(S.dest);
+  let best=Infinity;
+  for(const o of opts)if(dd[o]>=0&&dd[o]<best)best=dd[o];
   return new Promise(res=>{
     const marks=[];
     opts.forEach(o=>{
-      const n=G.nodes[o];
-      const ring=el("ellipse",{cx:n.x,cy:FY(n.y),rx:18,ry:12,class:"opt-ring"},gOpt);
-      const hit=el("ellipse",{cx:n.x,cy:FY(n.y),rx:28,ry:19,class:"opt-hit"},gOpt);
+      const n=G.nodes[o], fy=FY(n.y), rec=dd[o]===best;
+      const ring=el("ellipse",{cx:n.x,cy:fy,rx:18,ry:12,class:"opt-ring"+(rec?" rec":"")},gOpt);
+      const lbl=el("text",{x:n.x,y:fy+24,class:"opt-lbl"+(rec?" rec":"")},gOpt);
+      lbl.textContent=`あと${dd[o]}マス`;
+      const hit=el("ellipse",{cx:n.x,cy:fy,rx:28,ry:19,class:"opt-hit"},gOpt);
       hit.addEventListener("click",()=>{
         marks.forEach(m=>m.remove());
         $("banner").classList.remove("show");
         res(o);
       });
-      marks.push(ring,hit);
+      marks.push(ring,lbl,hit);
     });
   });
 }
