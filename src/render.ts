@@ -24,6 +24,23 @@ let gDest: SVGGElement, gTok: SVGGElement, gOpt: SVGGElement;
 const nodeEls: SVGGElement[] = [];
 const dotGroups = new Map<number, SVGGElement>();
 
+/* ---------- 逆スケール(拡大しても駅・マスの画面上の大きさを一定に保つ) ----------
+   ズームすると駅どうしの間隔だけ広がり、駅名標やマスの見かけの大きさは変わらないので、
+   重なりが解消して見やすくなる。各要素を自分の中心を基準に nodeScale 倍する。 */
+type ScaleTarget = { g: SVGGElement; cx: number; cy: number };
+let staticScaleTargets: ScaleTarget[] = []; // 駅・マス(renderMapで再構築)
+let tokenScaleTargets: ScaleTarget[] = []; // コマ(drawTokensで再構築)
+let destCenter: { cx: number; cy: number } | null = null; // 目的地マーカーの中心
+let nodeScale = 1;
+let lastAppliedStaticScale = -1;
+
+function scaleAbout(cx: number, cy: number, s: number): string {
+  return `translate(${cx} ${cy}) scale(${s.toFixed(4)}) translate(${-cx} ${-cy})`;
+}
+function applyScaleTo(t: ScaleTarget): void {
+  t.g.setAttribute("transform", scaleAbout(t.cx, t.cy, nodeScale));
+}
+
 /** 駅名標クリック時のハンドラ。ui.ts からの循環参照を避けるため main.ts で後付け登録する */
 let onCityClick: (ci: number) => void = () => {};
 export function setCityClickHandler(fn: (ci: number) => void): void {
@@ -34,6 +51,7 @@ export function renderMap(): void {
   svg.innerHTML = "";
   nodeEls.length = 0;
   dotGroups.clear();
+  staticScaleTargets = [];
   gLand = el("g", {});
   gEdge = el("g", {});
   gNode = el("g", {});
@@ -73,7 +91,9 @@ export function renderMap(): void {
       el("text", { x: n.x, y: fy + 3, class: "sqlabel" }, g).textContent = lbl;
     }
     nodeEls[i] = g;
+    staticScaleTargets.push({ g, cx: n.x, cy: fy });
   }
+  lastAppliedStaticScale = -1; // 次の camLoop で再適用させる
   updateOwnDots();
   drawDest();
   drawTokens();
@@ -97,8 +117,10 @@ export function updateOwnDots(): void {
 
 export function drawDest(): void {
   gDest.innerHTML = "";
+  destCenter = null;
   if (S.dest < 0) return;
   const n = G.nodes[S.dest], fy = FY(n.y);
+  destCenter = { cx: n.x, cy: fy };
   el("ellipse", { cx: n.x, cy: fy, rx: 26, ry: 16, class: "dest-ring" }, gDest);
   el("line", { x1: n.x + 20, y1: fy - 6, x2: n.x + 20, y2: fy - 44, stroke: "var(--accent)", "stroke-width": 3.5, "stroke-linecap": "round" }, gDest);
   el("path", { d: `M${n.x + 21.5},${fy - 44} l24,7.5 l-24,7.5 Z`, fill: "var(--accent)", stroke: "#fff", "stroke-width": 1.5 }, gDest);
@@ -142,6 +164,7 @@ export function checkDrop(p: Player): void {
 
 export function drawTokens(): void {
   gTok.innerHTML = "";
+  tokenScaleTargets = [];
   const byPos = new Map<number, Player[]>();
   S.players.forEach((p) => {
     const list = byPos.get(p.pos) ?? [];
@@ -156,6 +179,7 @@ export function drawTokens(): void {
       // 重なったら横一列にならべる(円形配置より駅名が読みやすい)
       const x = n.x + (k - (m - 1) / 2) * 19, base = FY(n.y) - 4;
       const g = el("g", { class: "token" }, gTok);
+      tokenScaleTargets.push({ g, cx: x, cy: base });
       // 影(2.5D)
       el("ellipse", { cx: x, cy: base + 2, rx: 11, ry: 3.4, fill: "rgba(0,0,0,.28)" }, g);
       // 小さな機関車シルエットのコマ
@@ -185,15 +209,16 @@ export function highlightOptions(opts: number[]): Promise<number> {
     const marks: SVGElement[] = [];
     opts.forEach((o) => {
       const n = G.nodes[o], fy = FY(n.y), rec = dists[o] === recommended;
-      const ring = el("ellipse", { cx: n.x, cy: fy, rx: 18, ry: 12, class: "opt-ring" + (rec ? " rec" : "") }, gOpt);
-      const lbl = el("text", { x: n.x, y: fy + 24, class: "opt-lbl" + (rec ? " rec" : "") }, gOpt);
-      lbl.textContent = `あと${dists[o]}マス`;
-      const hit = el("ellipse", { cx: n.x, cy: fy, rx: 28, ry: 19, class: "opt-hit" }, gOpt);
+      // 駅・マスと同じ逆スケールをかけ、拡大しても見かけの大きさを揃える
+      const grp = el("g", { transform: scaleAbout(n.x, fy, nodeScale) }, gOpt);
+      el("ellipse", { cx: n.x, cy: fy, rx: 18, ry: 12, class: "opt-ring" + (rec ? " rec" : "") }, grp);
+      el("text", { x: n.x, y: fy + 24, class: "opt-lbl" + (rec ? " rec" : "") }, grp).textContent = `あと${dists[o]}マス`;
+      const hit = el("ellipse", { cx: n.x, cy: fy, rx: 28, ry: 19, class: "opt-hit" }, grp);
       hit.addEventListener("click", () => {
         marks.forEach((mk) => mk.remove());
         res(o);
       });
-      marks.push(ring, lbl, hit);
+      marks.push(grp);
     });
   });
 }
@@ -221,6 +246,9 @@ export function focusPlayer(p: Player): void {
   camTo(n.x, FY(n.y));
 }
 
+/** ズーム倍率の基準となる追従時の画面幅。この幅のとき駅・マスは等倍(scale=1)。 */
+const REF_FOLLOW_W = 400;
+
 function camLoop(): void {
   cam.x += (camT.x - cam.x) * 0.14;
   cam.y += (camT.y - cam.y) * 0.14;
@@ -229,6 +257,20 @@ function camLoop(): void {
   const asp = wrap.clientHeight / Math.max(1, wrap.clientWidth);
   const h = cam.w * asp;
   svg.setAttribute("viewBox", `${cam.x - cam.w / 2} ${cam.y - h / 2} ${cam.w} ${h}`);
+
+  // 逆スケールを更新:追従の目標幅から求めた倍率へなめらかに寄せる。
+  // 全体図と等倍追従(=REF_FOLLOW_W)ではどちらも scale=1 なので、拡大したときだけ
+  // 駅・マスの見かけの大きさが保たれ、間隔が広がって重なりが解消する。
+  const targetScale = fullView ? 1 : Math.min(2.4, Math.max(0.5, FOLLOW_W / REF_FOLLOW_W));
+  nodeScale += (targetScale - nodeScale) * 0.14;
+  if (Math.abs(nodeScale - lastAppliedStaticScale) > 0.002) {
+    for (const t of staticScaleTargets) applyScaleTo(t);
+    lastAppliedStaticScale = nodeScale;
+  }
+  // コマと目的地マーカーは頻繁に描き直されるので毎フレーム適用(要素数が少なく軽い)
+  for (const t of tokenScaleTargets) applyScaleTo(t);
+  if (destCenter && gDest) gDest.setAttribute("transform", scaleAbout(destCenter.cx, destCenter.cy, nodeScale));
+
   updateDestArrow(wrap, cam.x - cam.w / 2, cam.y - h / 2, cam.w, h);
   requestAnimationFrame(camLoop);
 }
