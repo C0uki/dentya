@@ -30,6 +30,7 @@ const dotGroups = new Map<number, SVGGElement>();
 type ScaleTarget = { g: SVGGElement; cx: number; cy: number };
 let staticScaleTargets: ScaleTarget[] = []; // 駅・マス(renderMapで再構築)
 let tokenScaleTargets: ScaleTarget[] = []; // コマ(drawTokensで再構築)
+let dropScaleTargets: ScaleTarget[] = []; // 落とし物マーカー(drawDropsで再構築)
 let destCenter: { cx: number; cy: number } | null = null; // 目的地マーカーの中心
 let nodeScale = 1;
 let lastAppliedStaticScale = -1;
@@ -130,11 +131,13 @@ export function drawDest(): void {
 export function drawDrops(): void {
   if (!gDrop) return;
   gDrop.innerHTML = "";
+  dropScaleTargets = [];
   for (const key in S.drops) {
     const ni = Number(key);
     const n = G.nodes[ni], k = S.drops[ni].length, fy = FY(n.y);
     if (!k) { delete S.drops[ni]; continue; }
     const g = el("g", {}, gDrop);
+    dropScaleTargets.push({ g, cx: n.x + 14, cy: fy - 16 });
     el("ellipse", { cx: n.x + 14, cy: fy - 8, rx: 8, ry: 3, fill: "rgba(0,0,0,.22)" }, g);
     el("rect", { x: n.x + 7, y: fy - 31, width: 14, height: 14, rx: 3, transform: `rotate(45 ${n.x + 14} ${fy - 24})`, fill: "#F2B33D", stroke: "#fff", "stroke-width": 1.8 }, g);
     el("text", { x: n.x + 14, y: fy - 20, "font-size": 10, "font-weight": 800, "text-anchor": "middle", fill: "#4a3b12" }, g).textContent = String(k);
@@ -229,7 +232,9 @@ const camT = { ...cam };
 export let fullView = false;
 /** 追従ズームの初期幅。REF_FOLLOW_W(400)より小さいぶん、初期状態から
     駅の間隔が広めに表示される(逆スケールで駅の見かけサイズは適度なまま) */
-export let FOLLOW_W = 320;
+export let FOLLOW_W = 280;
+/** 追従ズームの可動範囲とボタン1回ぶんの変化量 */
+export const FOLLOW_MIN = 140, FOLLOW_MAX = 900, FOLLOW_STEP = 60;
 export function setFullView(v: boolean): void { fullView = v; }
 export function setFollowW(v: number): void { FOLLOW_W = v; }
 
@@ -263,14 +268,18 @@ function camLoop(): void {
   // 逆スケールを更新:追従の目標幅から求めた倍率へなめらかに寄せる。
   // 全体図と等倍追従(=REF_FOLLOW_W)ではどちらも scale=1 なので、拡大したときだけ
   // 駅・マスの見かけの大きさが保たれ、間隔が広がって重なりが解消する。
-  const targetScale = fullView ? 1 : Math.min(2.4, Math.max(0.5, FOLLOW_W / REF_FOLLOW_W));
+  const targetScale = fullView ? 1 : Math.min(2.4, Math.max(0.3, FOLLOW_W / REF_FOLLOW_W));
   nodeScale += (targetScale - nodeScale) * 0.14;
   if (Math.abs(nodeScale - lastAppliedStaticScale) > 0.002) {
     for (const t of staticScaleTargets) applyScaleTo(t);
     lastAppliedStaticScale = nodeScale;
+    // 深いズームで線路が太くなりすぎないよう、線幅・破線も同じ倍率で縮める
+    svg.style.setProperty("--edgew", (3.4 * nodeScale).toFixed(2));
+    svg.style.setProperty("--edgedash", `${(2 * nodeScale).toFixed(2)} ${(7 * nodeScale).toFixed(2)}`);
   }
-  // コマと目的地マーカーは頻繁に描き直されるので毎フレーム適用(要素数が少なく軽い)
+  // コマ・落とし物・目的地マーカーは頻繁に描き直されるので毎フレーム適用(要素数が少なく軽い)
   for (const t of tokenScaleTargets) applyScaleTo(t);
+  for (const t of dropScaleTargets) applyScaleTo(t);
   if (destCenter && gDest) gDest.setAttribute("transform", scaleAbout(destCenter.cx, destCenter.cy, nodeScale));
 
   updateDestArrow(wrap, cam.x - cam.w / 2, cam.y - h / 2, cam.w, h);
