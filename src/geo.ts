@@ -31,28 +31,8 @@ function buildGraph(): Graph {
     adj.push([]);
   });
 
-  // 過密地帯(関東・関西など)は駅名標が重ならないよう少しだけ押し広げる。
-  // ただし元の位置から離れすぎないよう上限をかけ、海の上に出た駅は陸へ引き戻す。
-  const anchors = nodes.slice(0, CITIES.length).map((n) => ({ x: n.x, y: n.y }));
-  for (let it = 0; it < 50; it++) {
-    for (let a = 0; a < CITIES.length; a++) {
-      for (let b = a + 1; b < CITIES.length; b++) {
-        const A = nodes[a], B = nodes[b];
-        const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy), min = 50;
-        if (d < min && d > 0.01) {
-          const push = (min - d) / 2 / d;
-          A.x -= dx * push; A.y -= dy * push;
-          B.x += dx * push; B.y += dy * push;
-        }
-      }
-    }
-    for (let a = 0; a < CITIES.length; a++) {
-      const A = nodes[a], an = anchors[a];
-      const dx = A.x - an.x, dy = A.y - an.y, d = Math.hypot(dx, dy), cap = 30;
-      if (d > cap) { A.x = an.x + (dx / d) * cap; A.y = an.y + (dy / d) * cap; }
-    }
-  }
-
+  const cityCount = CITIES.length;
+  const anchors = nodes.slice(0, cityCount).map((n) => ({ x: n.x, y: n.y }));
   const polys = COAST.map((isl) => isl.map((p) => [PRJX(p[0]), PRJY(p[1])] as [number, number]));
   const inland = (x: number, y: number): boolean =>
     polys.some((poly) => {
@@ -63,15 +43,42 @@ function buildGraph(): Graph {
       }
       return inside;
     });
-  for (let a = 0; a < CITIES.length; a++) {
-    const n = nodes[a], an = anchors[a];
-    if (inland(n.x, n.y) || !inland(an.x, an.y)) continue;
-    let fixed = false;
-    for (let t = 0.15; t < 1 && !fixed; t += 0.15) {
-      const x = n.x + (an.x - n.x) * t, y = n.y + (an.y - n.y) * t;
-      if (inland(x, y)) { n.x = x; n.y = y; fixed = true; }
+
+  // 過密地帯(関東・関西など)は駅名標が重ならないよう押し広げる。
+  // 駅名標は横長なので、実際の看板の縦横サイズを考慮した「楕円距離」で判定し、
+  // 縦にずらせば済むペアは縦にずらす(移動量が最小で済む)。
+  // 「元の位置から離れすぎない」「海の上に出ない」の2制約も毎ラウンド適用し、
+  // 3つの条件を同時に満たす配置へ収束させる。
+  for (let round = 0; round < 80; round++) {
+    for (let a = 0; a < cityCount; a++) {
+      for (let b = a + 1; b < cityCount; b++) {
+        const A = nodes[a] as Extract<GraphNode, { type: "city" }>;
+        const B = nodes[b] as Extract<GraphNode, { type: "city" }>;
+        const needX = (A.pw + B.pw) / 2 + 8; // 看板の幅ぶん+余白
+        const needY = 46; // 描画時にY軸が0.6倍に圧縮されるため論理座標では広めに
+        let dx = (B.x - A.x) / needX, dy = (B.y - A.y) / needY;
+        let d = Math.hypot(dx, dy);
+        if (d >= 1) continue; // 重なっていない
+        if (d < 0.001) { dy = 0.001; d = 0.001; }
+        const push = (1 - d) / 2 / d;
+        const mx = dx * push * needX, my = dy * push * needY;
+        A.x -= mx; A.y -= my;
+        B.x += mx; B.y += my;
+      }
     }
-    if (!fixed) { n.x = an.x; n.y = an.y; }
+    for (let a = 0; a < cityCount; a++) {
+      const A = nodes[a], an = anchors[a];
+      const dx = A.x - an.x, dy = A.y - an.y, d = Math.hypot(dx, dy), cap = 40;
+      if (d > cap) { A.x = an.x + (dx / d) * cap; A.y = an.y + (dy / d) * cap; }
+      if (!inland(A.x, A.y) && inland(an.x, an.y)) {
+        let fixed = false;
+        for (let t = 0.2; t < 1 && !fixed; t += 0.2) {
+          const x = A.x + (an.x - A.x) * t, y = A.y + (an.y - A.y) * t;
+          if (inland(x, y)) { A.x = x; A.y = y; fixed = true; }
+        }
+        if (!fixed) { A.x = an.x; A.y = an.y; }
+      }
+    }
   }
 
   const link = (a: number, b: number): void => { adj[a].push(b); adj[b].push(a); };
@@ -96,6 +103,25 @@ function buildGraph(): Graph {
     }
     link(prev, b); chain.push(b);
     edgeLines.push({ chain, sea: !!sea });
+  }
+
+  // 中間マスが駅名標の裏に隠れないよう、看板の外へ押し出す。
+  // 左右に出すか上下に出すか、移動量が小さいほうを選ぶ。
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = cityCount; i < nodes.length; i++) {
+      const sq = nodes[i];
+      for (let c = 0; c < cityCount; c++) {
+        const cn = nodes[c] as Extract<GraphNode, { type: "city" }>;
+        const dx = sq.x - cn.x;
+        const dyF = (sq.y - cn.y) * FLAT; // 俯瞰描画上の縦距離
+        const halfW = cn.pw / 2 + 13, top = -26, bottom = 21; // 看板+マスの外形(描画座標)
+        if (Math.abs(dx) >= halfW || dyF <= top || dyF >= bottom) continue;
+        const pushX = dx >= 0 ? halfW - dx : -(halfW + dx);
+        const pushYF = dyF >= (top + bottom) / 2 ? bottom - dyF : top - dyF;
+        if (Math.abs(pushX) <= Math.abs(pushYF) / FLAT) sq.x += pushX;
+        else sq.y += pushYF / FLAT;
+      }
+    }
   }
 
   return { nodes, adj, cityIdx, edgeLines };
