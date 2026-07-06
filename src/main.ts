@@ -6,6 +6,7 @@ import { S } from "./state";
 import { muted, setMuted, unlockAudio } from "./sound";
 import {
   renderMap, camTo, focusPlayer, fullView, setFullView, setFollowW, FOLLOW_W,
+  FOLLOW_MIN, FOLLOW_MAX, FOLLOW_STEP,
   startCameraLoop, setCityClickHandler,
 } from "./render";
 import { $, log, banner, updateAll, showCityInfo, showAssets, showHowto } from "./ui";
@@ -52,13 +53,13 @@ function refocus(): void {
   if (p) focusPlayer(p);
 }
 $<HTMLButtonElement>("zoominbtn").onclick = () => {
-  setFollowW(Math.max(220, FOLLOW_W - 80));
+  setFollowW(Math.max(FOLLOW_MIN, FOLLOW_W - FOLLOW_STEP));
   setFullView(false);
   $("viewbtn").setAttribute("aria-pressed", "false");
   refocus();
 };
 $<HTMLButtonElement>("zoomoutbtn").onclick = () => {
-  setFollowW(Math.min(900, FOLLOW_W + 80));
+  setFollowW(Math.min(FOLLOW_MAX, FOLLOW_W + FOLLOW_STEP));
   setFullView(false);
   $("viewbtn").setAttribute("aria-pressed", "false");
   refocus();
