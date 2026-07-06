@@ -227,7 +227,9 @@ export function highlightOptions(opts: number[]): Promise<number> {
 const cam = { x: 760, y: 900, w: 1600 };
 const camT = { ...cam };
 export let fullView = false;
-export let FOLLOW_W = 400;
+/** 追従ズームの初期幅。REF_FOLLOW_W(400)より小さいぶん、初期状態から
+    駅の間隔が広めに表示される(逆スケールで駅の見かけサイズは適度なまま) */
+export let FOLLOW_W = 320;
 export function setFullView(v: boolean): void { fullView = v; }
 export function setFollowW(v: number): void { FOLLOW_W = v; }
 
